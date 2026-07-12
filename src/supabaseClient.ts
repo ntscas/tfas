@@ -27,9 +27,12 @@ function cleanSupabaseUrl(url: string): string {
   return cleaned;
 }
 
-// Read custom database credentials from environment if configured, otherwise use the default demo DB
-const envUrl = cleanSupabaseUrl((import.meta as any).env.VITE_SUPABASE_URL);
-const envAnonKey = cleanEnvValue((import.meta as any).env.VITE_SUPABASE_ANON_KEY);
+// Read custom database credentials from localStorage (for browser-side custom connect) first, otherwise from environment, otherwise use the default demo DB
+const localSavedUrl = typeof window !== 'undefined' ? localStorage.getItem('tfas_custom_supabase_url') : '';
+const localSavedKey = typeof window !== 'undefined' ? localStorage.getItem('tfas_custom_supabase_key') : '';
+
+const envUrl = cleanSupabaseUrl(localSavedUrl || (import.meta as any).env.VITE_SUPABASE_URL);
+const envAnonKey = cleanEnvValue(localSavedKey || (import.meta as any).env.VITE_SUPABASE_ANON_KEY);
 
 const defaultUrl = 'https://yvxjcsoiqekjkckcluql.supabase.co';
 const defaultAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2eGpjc29pcWVramtja2NsdXFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NzUxOTAsImV4cCI6MjA5NjA1MTE5MH0.NG6tg3HAN7ZfW-sr8ogIu1sjvCj80k7WpckR0bePwec';
@@ -42,6 +45,36 @@ export const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey;
 
 // Instantiating the real client-side Supabase client directly
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+export const TABLES = {
+  profiles: 'tfas_profiles',
+  posts: 'tfas_posts',
+  comments: 'tfas_comments'
+};
+
+let hasDetectedTables = false;
+export async function ensureTablesDetected() {
+  if (hasDetectedTables) return;
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase.from('tfas_posts').select('id').limit(1);
+      if (error && (error.message?.includes('does not exist') || error.code === '42P01' || error.message?.includes('not found'))) {
+        console.log('[Supabase] tfas_posts table not found. Falling back to tax_posts table.');
+        TABLES.profiles = 'tax_profiles';
+        TABLES.posts = 'tax_posts';
+        TABLES.comments = 'tax_comments';
+      } else {
+        console.log('[Supabase] Using tfas_posts / tfas_profiles / tfas_comments tables.');
+      }
+    } catch (e) {
+      console.warn('[Supabase] Error detecting tables:', e);
+    }
+  }
+  hasDetectedTables = true;
+}
+
+// Trigger detection on module load
+ensureTablesDetected();
 
 if (isUserConfigured) {
   console.log('[Supabase] 사용자 사용자 정의 클라우드 실시간 데이터베이스 연동 성공! URL:', supabaseUrl);
@@ -267,8 +300,9 @@ export const dbService = {
           const user = session.user;
           let name = user.user_metadata?.full_name || user.email?.split('@')[0] || '';
           try {
+            await ensureTablesDetected();
             const { data: p } = await withTimeout(
-              supabase.from('tfas_profiles').select('name').eq('id', user.id).single(),
+              supabase.from(TABLES.profiles).select('name').eq('id', user.id).single(),
               1500
             );
             if (p?.name) name = p.name;
@@ -320,9 +354,10 @@ export const dbService = {
 
         const userId = data.user.id;
 
+        await ensureTablesDetected();
         // Create or update profile directly on client
         const { error: profileError } = await supabase
-          .from('tfas_profiles')
+          .from(TABLES.profiles)
           .upsert({
             id: userId,
             name: name,
@@ -387,8 +422,9 @@ export const dbService = {
 
         let name = data.user.user_metadata?.full_name || email.split('@')[0];
         try {
+          await ensureTablesDetected();
           const { data: profile } = await supabase
-            .from('tfas_profiles')
+            .from(TABLES.profiles)
             .select('name')
             .eq('id', data.user.id)
             .single();
@@ -451,8 +487,9 @@ export const dbService = {
 
         let name = user.user_metadata?.full_name || user.email?.split('@')[0] || '';
         try {
+          await ensureTablesDetected();
           const { data: p } = await withTimeout(
-            supabase.from('tfas_profiles').select('name').eq('id', user.id).single(),
+            supabase.from(TABLES.profiles).select('name').eq('id', user.id).single(),
             1500
           );
           if (p?.name) name = p.name;
@@ -474,9 +511,10 @@ export const dbService = {
   async getProfile(userId: string): Promise<UserProfile | null> {
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         const { data, error } = await withTimeout(
           supabase
-            .from('tfas_profiles')
+            .from(TABLES.profiles)
             .select('*')
             .eq('id', userId)
             .single(),
@@ -509,8 +547,9 @@ export const dbService = {
   async updateProfile(userId: string, profileData: Partial<UserProfile>) {
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         const { error } = await supabase
-          .from('tfas_profiles')
+          .from(TABLES.profiles)
           .upsert({
             id: userId,
             ...profileData,
@@ -572,10 +611,11 @@ export const dbService = {
   async getPosts(): Promise<Post[]> {
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         // 1. Fetch posts with elegant timeout limit (3000ms) to bypass cold sleep status fast
         const { data: rawPosts, error: postError } = await withTimeout(
           supabase
-            .from('tfas_posts')
+            .from(TABLES.posts)
             .select('id, title, content, author_id, created_at, views')
             .order('created_at', { ascending: false }),
           3000
@@ -591,7 +631,7 @@ export const dbService = {
         if (authorIds.length > 0) {
           const { data: rawProfiles, error: profileError } = await withTimeout(
             supabase
-              .from('tfas_profiles')
+              .from(TABLES.profiles)
               .select('id, name, avatar_url')
               .in('id', authorIds),
             2000
@@ -636,9 +676,10 @@ export const dbService = {
   async incrementViews(postId: string) {
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data: post } = await supabase.from('tfas_posts').select('views').eq('id', postId).single();
+        await ensureTablesDetected();
+        const { data: post } = await supabase.from(TABLES.posts).select('views').eq('id', postId).single();
         if (post) {
-          await supabase.from('tfas_posts').update({ views: (post.views || 0) + 1 }).eq('id', postId);
+          await supabase.from(TABLES.posts).update({ views: (post.views || 0) + 1 }).eq('id', postId);
         }
       } catch (e) {
         console.warn('Direct Client increment views error:', e);
@@ -653,8 +694,9 @@ export const dbService = {
   async createPost(title: string, content: string, userId: string, password?: string): Promise<{ success: boolean; data?: Post; error?: string }> {
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         const { data, error } = await supabase
-          .from('tfas_posts')
+          .from(TABLES.posts)
           .insert({
             title,
             content,
@@ -670,7 +712,7 @@ export const dbService = {
 
         // Fetch writer's profile
         const { data: profile } = await supabase
-          .from('tfas_profiles')
+          .from(TABLES.profiles)
           .select('name, avatar_url')
           .eq('id', userId)
           .single();
@@ -718,8 +760,9 @@ export const dbService = {
     if (!passwordInput) return false;
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         const { data, error } = await supabase
-          .from('tfas_posts')
+          .from(TABLES.posts)
           .select('id')
           .eq('id', postId)
           .eq('password', passwordInput)
@@ -739,8 +782,9 @@ export const dbService = {
   async hasPostPassword(postId: string): Promise<boolean> {
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         const { data, error } = await supabase
-          .from('tfas_posts')
+          .from(TABLES.posts)
           .select('password')
           .eq('id', postId)
           .single();
@@ -758,6 +802,7 @@ export const dbService = {
   async updatePost(id: string, title: string, content: string, passwordInput?: string) {
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         if (passwordInput) {
           const isValid = await this.verifyPostPassword(id, passwordInput);
           if (!isValid) {
@@ -766,7 +811,7 @@ export const dbService = {
         }
 
         const { error } = await supabase
-          .from('tfas_posts')
+          .from(TABLES.posts)
           .update({ title, content })
           .eq('id', id);
 
@@ -795,6 +840,7 @@ export const dbService = {
   async deletePost(id: string, passwordInput?: string) {
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         if (passwordInput) {
           const isValid = await this.verifyPostPassword(id, passwordInput);
           if (!isValid) {
@@ -804,12 +850,12 @@ export const dbService = {
 
         // Delete all comments belonging to this post first to prevent foreign key errors (tax_comments_post_id_fkey)
         await supabase
-          .from('tfas_comments')
+          .from(TABLES.comments)
           .delete()
           .eq('post_id', id);
 
         const { error } = await supabase
-          .from('tfas_posts')
+          .from(TABLES.posts)
           .delete()
           .eq('id', id);
 
@@ -838,10 +884,11 @@ export const dbService = {
   async getComments(postId: string): Promise<Comment[]> {
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         // 1. Fetch comments
         const { data: rawComments, error: commentError } = await withTimeout(
           supabase
-            .from('tfas_comments')
+            .from(TABLES.comments)
             .select('id, post_id, author_id, content, created_at')
             .eq('post_id', postId)
             .order('created_at', { ascending: true }),
@@ -858,7 +905,7 @@ export const dbService = {
         if (authorIds.length > 0) {
           const { data: rawProfiles, error: profileError } = await withTimeout(
             supabase
-              .from('tfas_profiles')
+              .from(TABLES.profiles)
               .select('id, name, avatar_url')
               .in('id', authorIds),
             2000
@@ -915,8 +962,9 @@ export const dbService = {
   async createComment(postId: string, content: string, userId: string): Promise<{ success: boolean; data?: Comment; error?: string }> {
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         const { data, error } = await supabase
-          .from('tfas_comments')
+          .from(TABLES.comments)
           .insert({
             post_id: postId,
             content,
@@ -929,7 +977,7 @@ export const dbService = {
         if (error) throw error;
 
         const { data: profile } = await supabase
-          .from('tfas_profiles')
+          .from(TABLES.profiles)
           .select('name, avatar_url')
           .eq('id', userId)
           .single();
@@ -981,9 +1029,10 @@ export const dbService = {
       }
 
       try {
+        await ensureTablesDetected();
         // Upsert profile with nickname
         const { error: profileError } = await supabase
-          .from('tfas_profiles')
+          .from(TABLES.profiles)
           .upsert({
             id: userId,
             name: finalNickname,
@@ -993,7 +1042,7 @@ export const dbService = {
           });
 
         if (profileError) {
-          throw new Error(`사용자 프로필 테이블(tfas_profiles) 등록 실패: ${profileError.message}`);
+          throw new Error(`사용자 프로필 테이블(${TABLES.profiles}) 등록 실패: ${profileError.message}`);
         }
 
         this.registerMyAnonAuthorId(userId);
@@ -1002,7 +1051,7 @@ export const dbService = {
         if (result.success) {
           return result;
         } else {
-          throw new Error(result.error || '게시글 테이블(tfas_posts) 저장 실패');
+          throw new Error(result.error || `게시글 테이블(${TABLES.posts}) 저장 실패`);
         }
       } catch (dbErr: any) {
         console.error('[Supabase] Cloud raw insert failed:', dbErr);
@@ -1042,9 +1091,10 @@ export const dbService = {
       }
 
       try {
+        await ensureTablesDetected();
         // Upsert profile with nickname
         const { error: profileError } = await supabase
-          .from('tfas_profiles')
+          .from(TABLES.profiles)
           .upsert({
             id: userId,
             name: finalNickname,
@@ -1054,7 +1104,7 @@ export const dbService = {
           });
 
         if (profileError) {
-          throw new Error(`사용자 프로필 테이블(tfas_profiles) 등록 실패: ${profileError.message}`);
+          throw new Error(`사용자 프로필 테이블(${TABLES.profiles}) 등록 실패: ${profileError.message}`);
         }
 
         this.registerMyAnonAuthorId(userId);
@@ -1063,7 +1113,7 @@ export const dbService = {
         if (result.success) {
           return result;
         } else {
-          throw new Error(result.error || '댓글 테이블(tfas_comments) 저장 실패');
+          throw new Error(result.error || `댓글 테이블(${TABLES.comments}) 저장 실패`);
         }
       } catch (dbErr: any) {
         console.error('[Supabase] Cloud raw comment insert failed:', dbErr);
@@ -1092,8 +1142,9 @@ export const dbService = {
   async deleteComment(id: string) {
     if (isSupabaseConfigured && supabase) {
       try {
+        await ensureTablesDetected();
         const { error } = await supabase
-          .from('tfas_comments')
+          .from(TABLES.comments)
           .delete()
           .eq('id', id);
 
