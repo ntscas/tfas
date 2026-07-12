@@ -42,6 +42,7 @@ export default function App() {
   const [boardView, setBoardView] = useState<'list' | 'detail' | 'write' | 'edit'>('list');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [postToEdit, setPostToEdit] = useState<Post | null>(null);
+  const [editPassword, setEditPassword] = useState<string>('');
   const [userAvatar, setUserAvatar] = useState<string>('');
   
   // PWA Install Prompt State
@@ -86,7 +87,7 @@ export default function App() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     const handleAppInstalled = () => {
-      console.log('[PWA] Tax Talk 앱이 성공적으로 설치되었습니다.');
+      console.log('[PWA] Tax-Forensics 앱이 성공적으로 설치되었습니다.');
       setDeferredPrompt(null);
       setIsStandalone(true);
     };
@@ -241,8 +242,8 @@ export default function App() {
                 <Zap className="w-5 h-5 text-emerald-400 stroke-[2.5]" />
               </div>
               <div className="flex flex-col gap-0.5">
-                <span className="text-[11px] font-bold text-emerald-400 tracking-tight leading-tight">카더라 통신(카통)</span>
-                <h1 className="text-base font-extrabold text-white tracking-tight leading-none">Tax Talk</h1>
+                <span className="text-[11px] font-bold text-emerald-400 tracking-tight leading-tight">Tax-Forensics</span>
+                <h1 className="text-base font-extrabold text-white tracking-tight leading-none">Tax-Forensics</h1>
               </div>
             </div>
 
@@ -262,7 +263,7 @@ export default function App() {
                 Navigation (카테고리)
               </p>
               <nav className="space-y-1">
-                {(['All', '공지', '자유', '카통', '질문'] as const).map((cat) => {
+                {(['All', '공지', '자유', 'TFAS', '질문'] as const).map((cat) => {
                   const isActive = activeTab === 'board' && selectedCategory === cat;
                   const label = cat === 'All' ? 'All Discussions' : cat;
                   const count = getCategoryCount(cat);
@@ -334,7 +335,7 @@ export default function App() {
                         className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 active:scale-[0.98] transition-all cursor-pointer"
                       >
                         <Download className="w-4 h-4 text-amber-400 animate-bounce shrink-0" />
-                        <span>Tax Talk 앱 설치하기</span>
+                        <span>Tax-Forensics 앱 설치하기</span>
                       </button>
                     ) : (
                       <button
@@ -342,7 +343,7 @@ export default function App() {
                         className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 active:scale-[0.98] transition-all cursor-pointer"
                       >
                         <Download className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Tax Talk 앱 바로 설치하기</span>
+                        <span>Tax-Forensics 앱 바로 설치하기</span>
                       </button>
                     )}
                   </div>
@@ -432,7 +433,7 @@ export default function App() {
               >
                 <Menu className="w-5.5 h-5.5" />
               </button>
-              <span className="text-sm font-extrabold text-brand-text font-serif">Tax Talk</span>
+              <span className="text-sm font-extrabold text-brand-text font-serif">Tax-Forensics</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -527,8 +528,9 @@ export default function App() {
                         onBack={() => {
                           setBoardView('list');
                         }}
-                        onEdit={(post) => {
+                        onEdit={(post, pwd) => {
                           setPostToEdit(post);
+                          setEditPassword(pwd || '');
                           setBoardView('edit');
                         }}
                         onDeleted={() => {
@@ -549,15 +551,20 @@ export default function App() {
                         onLoginRedirect={() => setActiveTab('profile')}
                       />
                     ) : boardView === 'edit' && postToEdit ? (
-                      (currentUser || dbService.getMyAnonAuthorIds().includes(postToEdit.author_id)) ? (
+                      (currentUser || dbService.getMyAnonAuthorIds().includes(postToEdit.author_id) || editPassword) ? (
                         <PostForm 
                           postToEdit={postToEdit}
+                          editPassword={editPassword}
                           currentUser={currentUser}
                           onSuccess={() => {
                             setBoardView('list');
+                            setEditPassword('');
                             fetchPosts();
                           }}
-                          onCancel={() => setBoardView('list')}
+                          onCancel={() => {
+                            setBoardView('list');
+                            setEditPassword('');
+                          }}
                           onLoginRedirect={() => setActiveTab('profile')}
                         />
                       ) : (
@@ -617,7 +624,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Tax Talk PWA Install Guidance Modal */}
+      {/* Tax-Forensics PWA Install Guidance Modal */}
       <AnimatePresence>
         {showInstallModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-xs" id="install-guide-backdrop">
@@ -639,7 +646,7 @@ export default function App() {
                 <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
                   <Download className="w-5 h-5 text-emerald-500 animate-bounce" />
                 </div>
-                <h3 className="text-base font-black text-slate-900 font-serif">Tax Talk 앱 설치하기</h3>
+                <h3 className="text-base font-black text-slate-900 font-serif">Tax-Forensics 앱 설치하기</h3>
                 <p className="text-[11px] text-slate-500 font-semibold leading-relaxed">
                   독립형 앱(PWA)으로 설치해 보세요! 일반 모바일 앱처럼 홈화면에서 원터치로 빠르게 접속할 수 있습니다.
                 </p>
