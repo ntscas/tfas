@@ -11,11 +11,38 @@ export default function ConfigGuide() {
   const [copied, setCopied] = useState(false);
   const [isRealDb, setIsRealDb] = useState(isSupabaseConfigured);
 
+  const [customUrl, setCustomUrl] = useState(() => localStorage.getItem('tfas_custom_supabase_url') || '');
+  const [customKey, setCustomKey] = useState(() => localStorage.getItem('tfas_custom_supabase_key') || '');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'cleared'>('idle');
+
   useEffect(() => {
     dbService.checkConfig().then((val) => {
       setIsRealDb(val);
     });
   }, []);
+
+  const handleSaveCredentials = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (customUrl.trim() && customKey.trim()) {
+      localStorage.setItem('tfas_custom_supabase_url', customUrl.trim());
+      localStorage.setItem('tfas_custom_supabase_key', customKey.trim());
+      setSaveStatus('saved');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    }
+  };
+
+  const handleClearCredentials = () => {
+    localStorage.removeItem('tfas_custom_supabase_url');
+    localStorage.removeItem('tfas_custom_supabase_key');
+    setCustomUrl('');
+    setCustomKey('');
+    setSaveStatus('cleared');
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+  };
 
   const sqlCode = `-- [익명 글쓰기 외래키 원천적 제거 및 즉시 활성화 핫픽스]
 -- 아래 코드를 전부 복사하여 Supabase SQL Editor에 넣고 실행(Run)하시면,
@@ -233,16 +260,81 @@ create policy "본인 댓글만 삭제" on public.tfas_comments
         <div>
           <h3 className="text-sm font-bold text-brand-text flex items-center gap-2 mb-2 font-serif">
             <span className="w-5 h-5 rounded-full bg-brand-secondary text-brand-primary border border-brand-border/40 text-xs flex items-center justify-center font-bold">3</span>
-            환경변수 설정하기 (마지막 단계)
+            환경변수 설정 및 브라우저 즉시 연동하기 (추천)
           </h3>
-          <p className="text-xs text-brand-muted-text ml-7 leading-relaxed font-semibold">
+          <p className="text-xs text-brand-muted-text ml-7 leading-relaxed font-semibold mb-3">
             Supabase 대시보드의 <strong className="text-brand-text">[Project Settings] → [API]</strong> 메뉴에서 
-            <strong className="text-brand-primary">Project URL</strong> 및 <strong className="text-brand-primary">Anon Key</strong>를 찾은 뒤, 
-            이 App 내부의 Secrets 설정이나 <code className="text-brand-text">.env</code> 파일에 다음 값으로 입력해 주시면 연동이 완료됩니다!
+            <strong className="text-brand-primary">Project URL</strong> 및 <strong className="text-brand-primary">Anon Key</strong>를 복사해 주세요.
+            깃허브(GitHub Pages) 배포 상태에서도 코드를 수정하거나 다시 커밋할 필요 없이, 아래에 값을 입력하고 저장하시면 <strong>해당 기기의 브라우저에 즉시 연동</strong>됩니다!
           </p>
-          <div className="mt-2.5 ml-7 bg-brand-secondary rounded-xl p-4 border border-brand-border/40 font-mono text-xs text-brand-primary font-bold space-y-1">
-            <div>VITE_SUPABASE_URL = "복사한 Project URL 주소"</div>
-            <div>VITE_SUPABASE_ANON_KEY = "복사한 anon public key 값"</div>
+
+          <form onSubmit={handleSaveCredentials} className="ml-7 space-y-3 bg-brand-secondary border border-brand-border/40 rounded-2xl p-4 md:p-5">
+            <div className="space-y-1">
+              <label className="text-xs font-serif font-bold text-brand-text flex items-center justify-between">
+                <span>Supabase Project URL</span>
+                <span className="text-[10px] text-brand-muted-text font-mono font-medium">VITE_SUPABASE_URL</span>
+              </label>
+              <input
+                type="url"
+                required
+                placeholder="https://your-project.supabase.co"
+                value={customUrl}
+                onChange={(e) => setCustomUrl(e.target.value)}
+                className="w-full bg-brand-card border border-brand-border/60 hover:border-brand-primary/50 focus:border-brand-primary px-3 py-2 rounded-xl text-xs font-mono text-brand-text focus:outline-none transition-colors"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-serif font-bold text-brand-text flex items-center justify-between">
+                <span>Supabase Anon Key (Public)</span>
+                <span className="text-[10px] text-brand-muted-text font-mono font-medium">VITE_SUPABASE_ANON_KEY</span>
+              </label>
+              <textarea
+                required
+                rows={2}
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5c..."
+                value={customKey}
+                onChange={(e) => setCustomKey(e.target.value)}
+                className="w-full bg-brand-card border border-brand-border/60 hover:border-brand-primary/50 focus:border-brand-primary px-3 py-2 rounded-xl text-xs font-mono text-brand-text focus:outline-none transition-colors resize-none leading-relaxed"
+              />
+            </div>
+
+            <div className="pt-1 flex flex-wrap gap-2 justify-between items-center">
+              <div>
+                {saveStatus === 'saved' && (
+                  <span className="text-xs text-emerald-600 font-bold flex items-center gap-1 animate-pulse">
+                    <Check size={14} /> 브라우저 저장 성공! 잠시 후 자동 새로고침됩니다...
+                  </span>
+                )}
+                {saveStatus === 'cleared' && (
+                  <span className="text-xs text-brand-primary font-bold flex items-center gap-1 animate-pulse">
+                    초기화 성공! 잠시 후 기본 데모 DB로 복구됩니다...
+                  </span>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                {(localStorage.getItem('tfas_custom_supabase_url') || localStorage.getItem('tfas_custom_supabase_key')) && (
+                  <button
+                    type="button"
+                    onClick={handleClearCredentials}
+                    className="px-3 py-2 rounded-xl bg-red-50 text-red-600 border border-red-200 text-xs font-bold hover:bg-red-100 transition-all cursor-pointer"
+                  >
+                    연동 초기화
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary/90 text-brand-secondary font-serif font-bold text-xs shadow-sm hover:shadow transition-all cursor-pointer"
+                >
+                  브라우저 즉시 저장 및 연결
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <div className="mt-3 ml-7 bg-brand-secondary/40 rounded-xl p-3 border border-brand-border/30 text-[11px] text-brand-muted-text font-semibold leading-relaxed">
+            💡 <strong>정석 연동 방법 (모든 방문자 동시 연동):</strong> 깃허브 레포지토리의 <strong className="text-brand-text">[Settings] → [Secrets and variables] → [Actions]</strong> 메뉴에 <code className="text-brand-text font-bold">VITE_SUPABASE_URL</code>와 <code className="text-brand-text font-bold">VITE_SUPABASE_ANON_KEY</code>를 각각 등록해 주시면, 사이트를 방문하는 모든 사용자에게 자동 동기화되는 영구 배포판이 완성됩니다.
           </div>
         </div>
       </div>
