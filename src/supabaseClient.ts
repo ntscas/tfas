@@ -268,7 +268,7 @@ export const dbService = {
           let name = user.user_metadata?.full_name || user.email?.split('@')[0] || '';
           try {
             const { data: p } = await withTimeout(
-              supabase.from('tax_profiles').select('name').eq('id', user.id).single(),
+              supabase.from('tfas_profiles').select('name').eq('id', user.id).single(),
               1500
             );
             if (p?.name) name = p.name;
@@ -322,7 +322,7 @@ export const dbService = {
 
         // Create or update profile directly on client
         const { error: profileError } = await supabase
-          .from('tax_profiles')
+          .from('tfas_profiles')
           .upsert({
             id: userId,
             name: name,
@@ -388,7 +388,7 @@ export const dbService = {
         let name = data.user.user_metadata?.full_name || email.split('@')[0];
         try {
           const { data: profile } = await supabase
-            .from('tax_profiles')
+            .from('tfas_profiles')
             .select('name')
             .eq('id', data.user.id)
             .single();
