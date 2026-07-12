@@ -17,13 +17,22 @@ export default function ConfigGuide() {
     });
   }, []);
 
-  const sqlCode = `-- [기존 DB 외래키 제약조건 제거 핫픽스 - 익명/비회원 실시간 글쓰기 오류 완벽 방지]
--- 이 스크립트는 tax_profiles 테이블의 어떠한 외래키(auth.users 연동 등)도 자동으로 찾아내 삭제하는 무결성 핫픽스입니다.
--- 아래 SQL을 복사하여 Supabase SQL Editor에서 실행하시면 즉시 익명 클라우드 저장이 영구 가동됩니다!
+  const sqlCode = `-- [익명 글쓰기 외래키 원천적 제거 및 즉시 활성화 핫픽스]
+-- 아래 코드를 전부 복사하여 Supabase SQL Editor에 넣고 실행(Run)하시면,
+-- 기존 데이터 손상 없이 외래키 제약조건만 즉시 제거하여 게시글 등록 실패(foreign key constraint violation)를 완벽히 해결합니다!
+
+-- 1. 기존 테이블에 외래키가 걸려있다면 즉시 제거 (기존 데이터를 완벽히 유지하면서 오류만 즉시 해결하는 방법)
+ALTER TABLE IF EXISTS public.tfas_posts DROP CONSTRAINT IF EXISTS tfas_posts_author_id_fkey;
+ALTER TABLE IF EXISTS public.tfas_posts DROP CONSTRAINT IF EXISTS tfas_posts_author_id_fkey1;
+ALTER TABLE IF EXISTS public.tfas_comments DROP CONSTRAINT IF EXISTS tfas_comments_author_id_fkey;
+ALTER TABLE IF EXISTS public.tfas_comments DROP CONSTRAINT IF EXISTS tfas_comments_author_id_fkey1;
+
+-- 2) 모든 테이블 외래키 제약조건 동적 전수 검사 및 강제 제거 블록
 DO $$
 DECLARE
     r RECORD;
 BEGIN
+    -- 게시글(tfas_posts) 테이블의 author_id 외래키 제거
     FOR r IN (
         SELECT tc.constraint_name 
         FROM information_schema.table_constraints AS tc 
@@ -31,88 +40,103 @@ BEGIN
           ON tc.constraint_name = kcu.constraint_name
           AND tc.table_schema = kcu.table_schema
         WHERE tc.constraint_type = 'FOREIGN KEY' 
-          AND tc.table_name = 'tax_profiles'
-          AND kcu.column_name = 'id'
+          AND tc.table_name = 'tfas_posts'
+          AND kcu.column_name = 'author_id'
     ) LOOP
-        EXECUTE 'ALTER TABLE public.tax_profiles DROP CONSTRAINT ' || quote_ident(r.constraint_name);
+        EXECUTE 'ALTER TABLE public.tfas_posts DROP CONSTRAINT IF EXISTS ' || quote_ident(r.constraint_name);
+    END LOOP;
+
+    -- 댓글(tfas_comments) 테이블의 author_id 외래키 제거
+    FOR r IN (
+        SELECT tc.constraint_name 
+        FROM information_schema.table_constraints AS tc 
+        JOIN information_schema.key_column_usage AS kcu
+          ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY' 
+          AND tc.table_name = 'tfas_comments'
+          AND kcu.column_name = 'author_id'
+    ) LOOP
+        EXECUTE 'ALTER TABLE public.tfas_comments DROP CONSTRAINT IF EXISTS ' || quote_ident(r.constraint_name);
     END LOOP;
 END $$;
 
--- (선택 사항: 만약 위 구문이 생소하다면 아래 기존 1줄 명령도 동일한 역할을 시도합니다)
--- ALTER TABLE public.tax_profiles DROP CONSTRAINT IF EXISTS tax_profiles_id_fkey;
+-- [새로운 설치를 위한 최적화된 테이블 생성 코드]
+-- (이미 테이블이 존재하는 경우, 아래 create table은 실행되지 않거나 오류가 나도 무방하며 위 alter/drop 구문이 정상 작동하여 즉시 게시 가능합니다)
 
 -- 1. 사용자 프로필 테이블 생성 (public schema)
-create table public.tax_profiles (
-  id uuid primary key, -- (익명 및 비회원 글쓰기 완벽 호환을 위해 auth.users 직접 외래키 제약조건제외)
+create table if not exists public.tfas_profiles (
+  id uuid primary key, 
   name text not null,
   bio text,
   avatar_url text,
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );
 
--- 2. 게시판 글 테이블 생성
-create table public.tax_posts (
+-- 2. 게시판 글 테이블 생성 (외래키 제약을 완전히 제거하여 익명/회원 글쓰기 완벽 지원)
+create table if not exists public.tfas_posts (
   id uuid default gen_random_uuid() primary key,
   title text not null,
   content text not null,
-  author_id uuid references public.tax_profiles(id) on delete cascade not null,
+  author_id uuid not null, -- (외래키 제약 제거)
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  views int default 0 not null
+  views int default 0 not null,
+  password text -- 익명 게시글 수정/삭제용 비밀번호
 );
 
--- 3. 댓글 테이블 생성
-create table public.tax_comments (
+-- 3. 댓글 테이블 생성 (외래키 제약 완전히 제거)
+create table if not exists public.tfas_comments (
   id uuid default gen_random_uuid() primary key,
-  post_id uuid references public.tax_posts(id) on delete cascade not null,
-  author_id uuid references public.tax_profiles(id) on delete cascade not null,
+  post_id uuid references public.tfas_posts(id) on delete cascade not null,
+  author_id uuid not null, -- (외래키 제약 제거)
   content text not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
 -- 4. Row Level Security (RLS) 및 정책 설정
 -- (참고: 로그인 없이도 익명 글쓰기가 완벽하게 클라우드에 연동되도록 unauthenticated/anon 생성을 전면 허용한 정책입니다)
-alter table public.tax_profiles enable row level security;
-alter table public.tax_posts enable row level security;
-alter table public.tax_comments enable row level security;
+alter table public.tfas_profiles enable row level security;
+alter table public.tfas_posts enable row level security;
+alter table public.tfas_comments enable row level security;
 
 -- 누구나 프로필을 조회하거나 회원 가입 없이 생성을 허용합니다
-create policy "누구나 프로필 조회 가능" on public.tax_profiles
+create policy "누구나 프로필 조회 가능" on public.tfas_profiles
   for select using (true);
 
-create policy "누구나 프로필 생성 가능" on public.tax_profiles
+create policy "누구나 프로필 생성 가능" on public.tfas_profiles
   for insert with check (true);
 
-create policy "본인 프로필만 수정 가능" on public.tax_profiles
+create policy "본인 프로필만 수정 가능" on public.tfas_profiles
   for all using (auth.uid() = id);
 
 -- 누구나 게시글을 조회하거나 회원 가입 없이 게시할 수 있도록 허용합니다
-create policy "누구나 게시글 조회 가능" on public.tax_posts
+create policy "누구나 게시글 조회 가능" on public.tfas_posts
   for select using (true);
 
-create policy "누구나 게시글 생성 가능" on public.tax_posts
+create policy "누구나 게시글 생성 가능" on public.tfas_posts
   for insert with check (true);
 
-create policy "본인 게시글만 수정/삭제" on public.tax_posts
+create policy "본인 게시글만 수정/삭제" on public.tfas_posts
   for update using (auth.uid() = author_id);
 
-create policy "본인 게시글만 삭제" on public.tax_posts
+create policy "본인 게시글만 삭제" on public.tfas_posts
   for delete using (auth.uid() = author_id);
 
 -- 누구나 댓글을 조회되거나 작성할 수 있도록 허용합니다
-create policy "누구나 댓글 조회 가능" on public.tax_comments
+create policy "누구나 댓글 조회 가능" on public.tfas_comments
   for select using (true);
 
-create policy "누구나 댓글 생성 가능" on public.tax_comments
+create policy "누구나 댓글 생성 가능" on public.tfas_comments
   for insert with check (true);
 
-create policy "본인 댓글만 삭제" on public.tax_comments
+create policy "본인 댓글만 삭제" on public.tfas_comments
   for delete using (auth.uid() = author_id);
 
--- [초단기 해결 팁] 만약 위의 복잡한 RLS 보안 설정을 수동 제어하고 싶지 않으시다면,
--- 아래 3문장을 실행해 RLS 자체를 가볍게 꺼주시면 즉시 클라우드에 비회원 무제한 글쓰기가 가동됩니다!
--- alter table public.tax_profiles disable row level security;
--- alter table public.tax_posts disable row level security;
--- alter table public.tax_comments disable row level security;
+-- [보안 관련 팁] 혹시 RLS 설정으로 인해 권한 에러(insufficient privileges 등)가 발생한다면,
+-- 아래 3줄 주석을 풀고 실행하여 RLS 보안 검사를 임시로 비활성화하면 즉시 정상 작동합니다!
+-- alter table public.tfas_profiles disable row level security;
+-- alter table public.tfas_posts disable row level security;
+-- alter table public.tfas_comments disable row level security;
 `;
 
   const copyToClipboard = () => {

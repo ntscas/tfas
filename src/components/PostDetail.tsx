@@ -6,13 +6,13 @@
 import React, { useState, useEffect } from 'react';
 import { Post, Comment, AuthUser, parseCategoryAndTitle } from '../types';
 import { dbService } from '../supabaseClient';
-import { ChevronLeft, Trash2, Edit3, Send, Calendar, Eye, MessageSquare, AlertCircle, Heart, X } from 'lucide-react';
-import { motion } from 'motion/react';
+import { ChevronLeft, Trash2, Edit3, Send, Calendar, Eye, MessageSquare, AlertCircle, Heart, X, Lock } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface PostDetailProps {
   post: Post;
   onBack: () => void;
-  onEdit: (post: Post) => void;
+  onEdit: (post: Post, password?: string) => void;
   currentUser: AuthUser | null;
   onDeleted: () => void;
   onLikeUpdated?: () => void;
@@ -25,6 +25,14 @@ export default function PostDetail({ post, onBack, onEdit, currentUser, onDelete
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [views, setViews] = useState(post.views);
+  const [hasPassword, setHasPassword] = useState(false);
+
+  // Password verification modal state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordAction, setPasswordAction] = useState<'edit' | 'delete' | null>(null);
+  const [inputPassword, setInputPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [isCheckingPassword, setIsCheckingPassword] = useState(false);
 
   const [likes, setLikes] = useState(() => {
     const val = localStorage.getItem(`likes_count_${post.id}`);
@@ -34,11 +42,12 @@ export default function PostDetail({ post, onBack, onEdit, currentUser, onDelete
   const { category, title: cleanTitle } = parseCategoryAndTitle(post.title);
 
   useEffect(() => {
-    // Increment view count on load & fetch comments
+    // Increment view count on load & fetch comments & check password
     const handleInit = async () => {
       await dbService.incrementViews(post.id);
       setViews(prev => prev + 1);
       fetchComments();
+      dbService.hasPostPassword(post.id).then(setHasPassword);
     };
     handleInit();
   }, [post.id]);
@@ -52,11 +61,11 @@ export default function PostDetail({ post, onBack, onEdit, currentUser, onDelete
     }
   };
 
-  const handlePostDelete = async () => {
-    if (!window.confirm('정말로 이 글을 삭제하시겠습니까?')) return;
+  const handlePostDelete = async (passwordInput?: string) => {
+    if (!passwordInput && !window.confirm('정말로 이 글을 삭제하시겠습니까?')) return;
     setIsDeleting(true);
     try {
-      const result = await dbService.deletePost(post.id);
+      const result = await dbService.deletePost(post.id, passwordInput);
       if (result.success) {
         onDeleted();
       } else {
@@ -66,6 +75,61 @@ export default function PostDetail({ post, onBack, onEdit, currentUser, onDelete
       alert('오류가 발생했습니다.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleEditClick = () => {
+    if (isAuthor) {
+      onEdit(post);
+    } else if (hasPassword) {
+      setPasswordAction('edit');
+      setShowPasswordModal(true);
+      setPasswordError('');
+      setInputPassword('');
+    }
+  };
+
+  const handleDeleteClick = () => {
+    if (isAuthor && !hasPassword) {
+      handlePostDelete();
+    } else if (hasPassword) {
+      setPasswordAction('delete');
+      setShowPasswordModal(true);
+      setPasswordError('');
+      setInputPassword('');
+    } else {
+      handlePostDelete();
+    }
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputPassword.trim()) return;
+
+    setIsCheckingPassword(true);
+    setPasswordError('');
+
+    try {
+      const isValid = await dbService.verifyPostPassword(post.id, inputPassword.trim());
+      if (isValid) {
+        setShowPasswordModal(false);
+        if (passwordAction === 'edit') {
+          onEdit(post, inputPassword.trim());
+        } else if (passwordAction === 'delete') {
+          const result = await dbService.deletePost(post.id, inputPassword.trim());
+          if (result.success) {
+            onDeleted();
+          } else {
+            setPasswordError(result.error || '삭제 중 오류가 발생했습니다.');
+          }
+        }
+      } else {
+        setPasswordError('비밀번호가 일치하지 않습니다.');
+      }
+    } catch (err) {
+      setPasswordError('인증 중 오류가 발생했습니다.');
+    } finally {
+      setIsCheckingPassword(false);
     }
   };
 
@@ -145,10 +209,10 @@ export default function PostDetail({ post, onBack, onEdit, currentUser, onDelete
         </div>
 
         <div className="flex items-center gap-1.5 ml-auto">
-          {isAuthor && (
+          {(isAuthor || hasPassword) && (
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => onEdit(post)}
+                onClick={handleEditClick}
                 className="flex items-center gap-1 px-2.5 py-1.5 bg-brand-secondary hover:bg-brand-hover text-brand-text font-semibold text-xs rounded-xl border border-brand-border cursor-pointer transition-colors"
                 id="btn-edit-post"
               >
@@ -156,7 +220,7 @@ export default function PostDetail({ post, onBack, onEdit, currentUser, onDelete
                 <span>수정</span>
               </button>
               <button
-                onClick={handlePostDelete}
+                onClick={handleDeleteClick}
                 disabled={isDeleting}
                 className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100/80 text-red-700 font-semibold text-xs rounded-xl border border-red-100 cursor-pointer transition-colors"
                 id="btn-delete-post"
@@ -337,6 +401,77 @@ export default function PostDetail({ post, onBack, onEdit, currentUser, onDelete
           <span>닫기</span>
         </button>
       </div>
+
+      {/* Password Prompt Modal */}
+      <AnimatePresence>
+        {showPasswordModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 w-full max-w-sm border border-slate-100 shadow-2xl relative space-y-4 text-slate-800"
+            >
+              <button 
+                onClick={() => setShowPasswordModal(false)}
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                id="btn-close-pwd-modal"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
+                  <Lock className="w-5 h-5 text-emerald-600" />
+                </div>
+                <h3 className="text-base font-black text-slate-900 font-serif">게시글 권한 인증</h3>
+                <p className="text-[11px] text-slate-500 font-semibold leading-relaxed">
+                  이 글을 {passwordAction === 'edit' ? '수정' : '삭제'}하기 위해 등록하신 비밀번호를 입력해 주세요.
+                </p>
+              </div>
+
+              <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                {passwordError && (
+                  <div className="p-3 bg-red-50 text-red-700 text-[11px] font-bold rounded-xl border border-red-100 text-center">
+                    {passwordError}
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <input
+                    type="password"
+                    value={inputPassword}
+                    onChange={(e) => setInputPassword(e.target.value)}
+                    placeholder="비밀번호 입력"
+                    required
+                    autoFocus
+                    disabled={isCheckingPassword}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-semibold text-center"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordModal(false)}
+                    disabled={isCheckingPassword}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-xl active:scale-[0.98] transition-all cursor-pointer text-center"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCheckingPassword || !inputPassword.trim()}
+                    className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] rounded-xl active:scale-[0.98] transition-all cursor-pointer text-center flex items-center justify-center gap-1 shadow-sm"
+                  >
+                    <span>{isCheckingPassword ? '확인 중...' : '확인'}</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

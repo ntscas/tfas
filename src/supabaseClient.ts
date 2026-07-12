@@ -452,7 +452,7 @@ export const dbService = {
         let name = user.user_metadata?.full_name || user.email?.split('@')[0] || '';
         try {
           const { data: p } = await withTimeout(
-            supabase.from('tax_profiles').select('name').eq('id', user.id).single(),
+            supabase.from('tfas_profiles').select('name').eq('id', user.id).single(),
             1500
           );
           if (p?.name) name = p.name;
@@ -476,7 +476,7 @@ export const dbService = {
       try {
         const { data, error } = await withTimeout(
           supabase
-            .from('tax_profiles')
+            .from('tfas_profiles')
             .select('*')
             .eq('id', userId)
             .single(),
@@ -510,7 +510,7 @@ export const dbService = {
     if (isSupabaseConfigured && supabase) {
       try {
         const { error } = await supabase
-          .from('tax_profiles')
+          .from('tfas_profiles')
           .upsert({
             id: userId,
             ...profileData,
@@ -575,7 +575,7 @@ export const dbService = {
         // 1. Fetch posts with elegant timeout limit (3000ms) to bypass cold sleep status fast
         const { data: rawPosts, error: postError } = await withTimeout(
           supabase
-            .from('tax_posts')
+            .from('tfas_posts')
             .select('id, title, content, author_id, created_at, views')
             .order('created_at', { ascending: false }),
           3000
@@ -591,7 +591,7 @@ export const dbService = {
         if (authorIds.length > 0) {
           const { data: rawProfiles, error: profileError } = await withTimeout(
             supabase
-              .from('tax_profiles')
+              .from('tfas_profiles')
               .select('id, name, avatar_url')
               .in('id', authorIds),
             2000
@@ -636,9 +636,9 @@ export const dbService = {
   async incrementViews(postId: string) {
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data: post } = await supabase.from('tax_posts').select('views').eq('id', postId).single();
+        const { data: post } = await supabase.from('tfas_posts').select('views').eq('id', postId).single();
         if (post) {
-          await supabase.from('tax_posts').update({ views: (post.views || 0) + 1 }).eq('id', postId);
+          await supabase.from('tfas_posts').update({ views: (post.views || 0) + 1 }).eq('id', postId);
         }
       } catch (e) {
         console.warn('Direct Client increment views error:', e);
@@ -650,17 +650,18 @@ export const dbService = {
     }
   },
 
-  async createPost(title: string, content: string, userId: string): Promise<{ success: boolean; data?: Post; error?: string }> {
+  async createPost(title: string, content: string, userId: string, password?: string): Promise<{ success: boolean; data?: Post; error?: string }> {
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
-          .from('tax_posts')
+          .from('tfas_posts')
           .insert({
             title,
             content,
             author_id: userId,
             created_at: new Date().toISOString(),
-            views: 0
+            views: 0,
+            password: password || null
           })
           .select()
           .single();
@@ -669,7 +670,7 @@ export const dbService = {
 
         // Fetch writer's profile
         const { data: profile } = await supabase
-          .from('tax_profiles')
+          .from('tfas_profiles')
           .select('name, avatar_url')
           .eq('id', userId)
           .single();
@@ -682,7 +683,8 @@ export const dbService = {
           author_name: profile?.name || '알 수 없음',
           author_avatar: profile?.avatar_url || '',
           created_at: data.created_at,
-          views: 0
+          views: 0,
+          password: data.password || undefined
         };
 
         return { success: true, data: newPost };
@@ -702,7 +704,8 @@ export const dbService = {
         author_name: profile?.name || '알 수 없음',
         author_avatar: profile?.avatar_url || '',
         created_at: new Date().toISOString(),
-        views: 0
+        views: 0,
+        password: password || undefined
       };
       
       db.posts.push(newPost);
@@ -711,11 +714,59 @@ export const dbService = {
     }
   },
 
-  async updatePost(id: string, title: string, content: string) {
+  async verifyPostPassword(postId: string, passwordInput: string): Promise<boolean> {
+    if (!passwordInput) return false;
     if (isSupabaseConfigured && supabase) {
       try {
+        const { data, error } = await supabase
+          .from('tfas_posts')
+          .select('id')
+          .eq('id', postId)
+          .eq('password', passwordInput)
+          .maybeSingle();
+        return !!data;
+      } catch (e) {
+        console.error(e);
+        return false;
+      }
+    } else {
+      const db = getLocalDB();
+      const post = db.posts.find(p => p.id === postId);
+      return post ? post.password === passwordInput : false;
+    }
+  },
+
+  async hasPostPassword(postId: string): Promise<boolean> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('tfas_posts')
+          .select('password')
+          .eq('id', postId)
+          .single();
+        return !!(data && data.password);
+      } catch (e) {
+        return false;
+      }
+    } else {
+      const db = getLocalDB();
+      const post = db.posts.find(p => p.id === postId);
+      return !!(post && post.password);
+    }
+  },
+
+  async updatePost(id: string, title: string, content: string, passwordInput?: string) {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        if (passwordInput) {
+          const isValid = await this.verifyPostPassword(id, passwordInput);
+          if (!isValid) {
+            return { success: false, error: '비밀번호가 일치하지 않습니다.' };
+          }
+        }
+
         const { error } = await supabase
-          .from('tax_posts')
+          .from('tfas_posts')
           .update({ title, content })
           .eq('id', id);
 
@@ -727,23 +778,38 @@ export const dbService = {
       }
     } else {
       const db = getLocalDB();
-      db.posts = db.posts.map(p => p.id === id ? { ...p, title, content } : p);
-      saveLocalDB(db);
-      return { success: true };
+      const postIndex = db.posts.findIndex(p => p.id === id);
+      if (postIndex !== -1) {
+        const post = db.posts[postIndex];
+        if (post.password && post.password !== passwordInput) {
+          return { success: false, error: '비밀번호가 일치하지 않습니다.' };
+        }
+        db.posts[postIndex] = { ...post, title, content };
+        saveLocalDB(db);
+        return { success: true };
+      }
+      return { success: false, error: '게시글을 찾을 수 없습니다.' };
     }
   },
 
-  async deletePost(id: string) {
+  async deletePost(id: string, passwordInput?: string) {
     if (isSupabaseConfigured && supabase) {
       try {
+        if (passwordInput) {
+          const isValid = await this.verifyPostPassword(id, passwordInput);
+          if (!isValid) {
+            return { success: false, error: '비밀번호가 일치하지 않습니다.' };
+          }
+        }
+
         // Delete all comments belonging to this post first to prevent foreign key errors (tax_comments_post_id_fkey)
         await supabase
-          .from('tax_comments')
+          .from('tfas_comments')
           .delete()
           .eq('post_id', id);
 
         const { error } = await supabase
-          .from('tax_posts')
+          .from('tfas_posts')
           .delete()
           .eq('id', id);
 
@@ -755,10 +821,17 @@ export const dbService = {
       }
     } else {
       const db = getLocalDB();
-      db.posts = db.posts.filter(p => p.id !== id);
-      db.comments = db.comments.filter(c => c.post_id !== id);
-      saveLocalDB(db);
-      return { success: true };
+      const post = db.posts.find(p => p.id === id);
+      if (post) {
+        if (post.password && post.password !== passwordInput) {
+          return { success: false, error: '비밀번호가 일치하지 않습니다.' };
+        }
+        db.posts = db.posts.filter(p => p.id !== id);
+        db.comments = db.comments.filter(c => c.post_id !== id);
+        saveLocalDB(db);
+        return { success: true };
+      }
+      return { success: false, error: '게시글을 찾을 수 없습니다.' };
     }
   },
 
@@ -768,7 +841,7 @@ export const dbService = {
         // 1. Fetch comments
         const { data: rawComments, error: commentError } = await withTimeout(
           supabase
-            .from('tax_comments')
+            .from('tfas_comments')
             .select('id, post_id, author_id, content, created_at')
             .eq('post_id', postId)
             .order('created_at', { ascending: true }),
@@ -785,7 +858,7 @@ export const dbService = {
         if (authorIds.length > 0) {
           const { data: rawProfiles, error: profileError } = await withTimeout(
             supabase
-              .from('tax_profiles')
+              .from('tfas_profiles')
               .select('id, name, avatar_url')
               .in('id', authorIds),
             2000
@@ -843,7 +916,7 @@ export const dbService = {
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
-          .from('tax_comments')
+          .from('tfas_comments')
           .insert({
             post_id: postId,
             content,
@@ -856,7 +929,7 @@ export const dbService = {
         if (error) throw error;
 
         const { data: profile } = await supabase
-          .from('tax_profiles')
+          .from('tfas_profiles')
           .select('name, avatar_url')
           .eq('id', userId)
           .single();
@@ -896,7 +969,7 @@ export const dbService = {
     }
   },
 
-  async createAnonymousPost(title: string, content: string, nickname: string): Promise<{ success: boolean; data?: Post; error?: string; isFallback?: boolean }> {
+  async createAnonymousPost(title: string, content: string, nickname: string, password?: string): Promise<{ success: boolean; data?: Post; error?: string; isFallback?: boolean }> {
     let finalNickname = nickname.trim() || '익명';
     if (isSupabaseConfigured && supabase) {
       let userId = '';
@@ -910,7 +983,7 @@ export const dbService = {
       try {
         // Upsert profile with nickname
         const { error: profileError } = await supabase
-          .from('tax_profiles')
+          .from('tfas_profiles')
           .upsert({
             id: userId,
             name: finalNickname,
@@ -920,16 +993,16 @@ export const dbService = {
           });
 
         if (profileError) {
-          throw new Error(`사용자 프로필 테이블(tax_profiles) 등록 실패: ${profileError.message}`);
+          throw new Error(`사용자 프로필 테이블(tfas_profiles) 등록 실패: ${profileError.message}`);
         }
 
         this.registerMyAnonAuthorId(userId);
 
-        const result = await this.createPost(title, content, userId);
+        const result = await this.createPost(title, content, userId, password);
         if (result.success) {
           return result;
         } else {
-          throw new Error(result.error || '게시글 테이블(tax_posts) 저장 실패');
+          throw new Error(result.error || '게시글 테이블(tfas_posts) 저장 실패');
         }
       } catch (dbErr: any) {
         console.error('[Supabase] Cloud raw insert failed:', dbErr);
@@ -947,7 +1020,8 @@ export const dbService = {
         author_name: finalNickname,
         author_avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(finalNickname)}`,
         created_at: new Date().toISOString(),
-        views: 0
+        views: 0,
+        password: password || undefined
       };
       db.posts.unshift(newPost);
       saveLocalDB(db);
@@ -970,7 +1044,7 @@ export const dbService = {
       try {
         // Upsert profile with nickname
         const { error: profileError } = await supabase
-          .from('tax_profiles')
+          .from('tfas_profiles')
           .upsert({
             id: userId,
             name: finalNickname,
@@ -980,7 +1054,7 @@ export const dbService = {
           });
 
         if (profileError) {
-          throw new Error(`사용자 프로필 테이블(tax_profiles) 등록 실패: ${profileError.message}`);
+          throw new Error(`사용자 프로필 테이블(tfas_profiles) 등록 실패: ${profileError.message}`);
         }
 
         this.registerMyAnonAuthorId(userId);
@@ -989,7 +1063,7 @@ export const dbService = {
         if (result.success) {
           return result;
         } else {
-          throw new Error(result.error || '댓글 테이블(tax_comments) 저장 실패');
+          throw new Error(result.error || '댓글 테이블(tfas_comments) 저장 실패');
         }
       } catch (dbErr: any) {
         console.error('[Supabase] Cloud raw comment insert failed:', dbErr);
@@ -1019,7 +1093,7 @@ export const dbService = {
     if (isSupabaseConfigured && supabase) {
       try {
         const { error } = await supabase
-          .from('tax_comments')
+          .from('tfas_comments')
           .delete()
           .eq('id', id);
 
