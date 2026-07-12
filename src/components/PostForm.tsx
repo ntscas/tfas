@@ -11,19 +11,21 @@ import { motion } from 'motion/react';
 
 interface PostFormProps {
   postToEdit?: Post;
+  editPassword?: string;
   currentUser: AuthUser | null;
   onSuccess: () => void;
   onCancel: () => void;
   onLoginRedirect?: () => void;
 }
 
-export default function PostForm({ postToEdit, currentUser, onSuccess, onCancel, onLoginRedirect }: PostFormProps) {
+export default function PostForm({ postToEdit, editPassword, currentUser, onSuccess, onCancel, onLoginRedirect }: PostFormProps) {
   const parsed = postToEdit ? parseCategoryAndTitle(postToEdit.title) : { category: '자유' as Category, title: '' };
   
   const [category, setCategory] = useState<Category>(parsed.category);
   const [title, setTitle] = useState(postToEdit ? parsed.title : '');
   const [content, setContent] = useState(postToEdit?.content || '');
   const [nickname, setNickname] = useState('익명');
+  const [postPassword, setPostPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [hideAnonymousBanner, setHideAnonymousBanner] = useState(false);
@@ -35,6 +37,12 @@ export default function PostForm({ postToEdit, currentUser, onSuccess, onCancel,
       return;
     }
 
+    // Passwords for anonymous users are required (at least 4 characters)
+    if (!currentUser && !postToEdit && (!postPassword || postPassword.trim().length < 4)) {
+      setError('익명 게시글 등록을 위해 4자리 이상의 비밀번호를 작성해 주세요.');
+      return;
+    }
+
     setIsSubmitting(true);
     setError('');
 
@@ -43,7 +51,7 @@ export default function PostForm({ postToEdit, currentUser, onSuccess, onCancel,
     try {
       if (postToEdit) {
         // Edit mode
-        const result = await dbService.updatePost(postToEdit.id, finalTitle, content.trim());
+        const result = await dbService.updatePost(postToEdit.id, finalTitle, content.trim(), editPassword);
         if (result.success) {
           onSuccess();
         } else {
@@ -53,9 +61,19 @@ export default function PostForm({ postToEdit, currentUser, onSuccess, onCancel,
         // Create mode
         let result;
         if (currentUser) {
-          result = await dbService.createPost(finalTitle, content.trim(), currentUser.id);
+          result = await dbService.createPost(
+            finalTitle, 
+            content.trim(), 
+            currentUser.id, 
+            postPassword.trim() || undefined
+          );
         } else {
-          result = await dbService.createAnonymousPost(finalTitle, content.trim(), nickname.trim() || '익명');
+          result = await dbService.createAnonymousPost(
+            finalTitle, 
+            content.trim(), 
+            nickname.trim() || '익명', 
+            postPassword.trim()
+          );
         }
         
         if (result.success) {
@@ -134,7 +152,7 @@ export default function PostForm({ postToEdit, currentUser, onSuccess, onCancel,
         <div className="space-y-2">
           <label className="block text-xs font-bold text-brand-text">카테고리</label>
           <div className="flex flex-wrap gap-2">
-            {(['공지', '자유', '카통', '질문'] as Category[]).map((cat) => (
+            {(['공지', '자유', 'TFAS', '질문'] as Category[]).map((cat) => (
               <button
                 key={cat}
                 type="button"
@@ -151,18 +169,35 @@ export default function PostForm({ postToEdit, currentUser, onSuccess, onCancel,
           </div>
         </div>
 
-        {/* Nickname Input - only shown to logged out anonymous authors */}
-        {!currentUser && !postToEdit && (
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-brand-text">작성자 닉네임 (익명)</label>
-            <input
-              type="text"
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              placeholder="익명"
-              disabled={isSubmitting}
-              className="w-2/3 px-4 py-3 bg-brand-input border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary focus:bg-brand-card transition-all font-semibold"
-            />
+        {/* Nickname and Password row for authors */}
+        {!postToEdit && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {!currentUser && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-brand-text">작성자 닉네임 (익명)</label>
+                <input
+                  type="text"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                  placeholder="익명"
+                  disabled={isSubmitting}
+                  className="w-full px-4 py-3 bg-brand-input border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary focus:bg-brand-card transition-all font-semibold"
+                />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-brand-text">
+                게시글 비밀번호 {!currentUser ? '(수정/삭제용 - 필수)' : '(선택)'}
+              </label>
+              <input
+                type="password"
+                value={postPassword}
+                onChange={(e) => setPostPassword(e.target.value)}
+                placeholder="비밀번호 입력 (4자리 이상)"
+                disabled={isSubmitting}
+                className="w-full px-4 py-3 bg-brand-input border border-brand-border rounded-xl text-sm text-brand-text placeholder-brand-muted focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary focus:bg-brand-card transition-all font-semibold"
+              />
+            </div>
           </div>
         )}
 
