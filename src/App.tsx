@@ -258,7 +258,7 @@ export default function App() {
                   >
                     <span className="flex items-center gap-2">
                       <Layers className="w-4 h-4 text-emerald-400" />
-                      <span>클라우드 DB: 연결됨 (.env)</span>
+                      <span>클라우드 DB: 연결됨</span>
                     </span>
                     <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
                   </div>
@@ -268,7 +268,7 @@ export default function App() {
                   >
                     <span className="flex items-center gap-2">
                       <Layers className="w-4 h-4 text-rose-400" />
-                      <span>클라우드 DB: 미설정 (.env 필요)</span>
+                      <span>클라우드 DB: 미설정</span>
                     </span>
                     <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse" />
                   </div>
