@@ -27,12 +27,9 @@ function cleanSupabaseUrl(url: string): string {
   return cleaned;
 }
 
-// Read custom database credentials from localStorage (for browser-side custom connect) first, otherwise from environment, otherwise use the default demo DB
-const localSavedUrl = typeof window !== 'undefined' ? localStorage.getItem('tfas_custom_supabase_url') : '';
-const localSavedKey = typeof window !== 'undefined' ? localStorage.getItem('tfas_custom_supabase_key') : '';
-
-const envUrl = cleanSupabaseUrl(localSavedUrl || (import.meta as any).env.VITE_SUPABASE_URL);
-const envAnonKey = cleanEnvValue(localSavedKey || (import.meta as any).env.VITE_SUPABASE_ANON_KEY);
+// Read credentials directly from environment variables (.env file)
+const envUrl = cleanSupabaseUrl((import.meta as any).env.VITE_SUPABASE_URL);
+const envAnonKey = cleanEnvValue((import.meta as any).env.VITE_SUPABASE_ANON_KEY);
 
 const defaultUrl = 'https://yvxjcsoiqekjkckcluql.supabase.co';
 const defaultAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2eGpjc29pcWVramtja2NsdXFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NzUxOTAsImV4cCI6MjA5NjA1MTE5MH0.NG6tg3HAN7ZfW-sr8ogIu1sjvCj80k7WpckR0bePwec';
