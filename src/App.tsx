@@ -9,17 +9,10 @@ import { dbService, isSupabaseConfigured } from './supabaseClient';
 import BoardList from './components/BoardList';
 import PostDetail from './components/PostDetail';
 import PostForm from './components/PostForm';
-import UserProfile from './components/UserProfile';
-import AuthScreen from './components/AuthScreen';
-import ConfigGuide from './components/ConfigGuide';
 import { 
   Cloud, 
   CloudOff, 
   Layers, 
-  User, 
-  Database, 
-  LogOut, 
-  LogIn, 
   Sparkles, 
   Rss, 
   Zap,
@@ -38,7 +31,6 @@ import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const currentUser = null; // 로그인 기능 제거 (익명 전용)
-  const [activeTab, setActiveTab] = useState<'board' | 'guide'>('board');
   const [boardView, setBoardView] = useState<'list' | 'detail' | 'write' | 'edit'>('list');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [postToEdit, setPostToEdit] = useState<Post | null>(null);
@@ -50,7 +42,6 @@ export default function App() {
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
   const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
   const [isInIframe, setIsInIframe] = useState<boolean>(false);
-  const [showLoginPrompt, setShowLoginPrompt] = useState<boolean>(false);
 
   // Check if already running as standalone PWA
   useEffect(() => {
@@ -67,10 +58,8 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const action = params.get('action');
       if (action === 'write') {
-        setActiveTab('board');
         setBoardView('write');
       } else if (action === 'board') {
-        setActiveTab('board');
         setBoardView('list');
       }
     }
@@ -160,7 +149,6 @@ export default function App() {
   // Switch category
   const handleCategorySelect = (cat: 'All' | Category) => {
     setSelectedCategory(cat);
-    setActiveTab('board');
     setMobileMenuOpen(false);
     
     // Auto preview first post in this selected category on desktop
@@ -224,7 +212,7 @@ export default function App() {
               </p>
               <nav className="space-y-1">
                 {(['All', '공지', '자유', 'TFAS', '질문'] as const).map((cat) => {
-                  const isActive = activeTab === 'board' && selectedCategory === cat;
+                  const isActive = selectedCategory === cat;
                   const label = cat === 'All' ? 'All Discussions' : cat;
                   const count = getCategoryCount(cat);
                   const isNotice = cat === '공지';
@@ -261,33 +249,21 @@ export default function App() {
             {/* Utility links */}
             <div>
               <p className="text-[10px] text-brand-sidebar-muted font-extrabold uppercase tracking-widest pl-2 mb-3">
-                App Settings
+                Database Status
               </p>
               <nav className="space-y-1">
-                <button
-                  onClick={() => { setActiveTab('guide'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    activeTab === 'guide' 
-                      ? 'bg-emerald-50/20 text-emerald-400 border border-emerald-500/40 font-extrabold' 
-                      : 'text-slate-300 hover:bg-brand-sidebar-hover hover:text-white'
-                  }`}
-                >
-                  <Database className="w-4 h-4 text-slate-400" />
-                  <span>설정 및 데이터베이스 연동</span>
-                </button>
-
                 <div
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-300"
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-300 bg-emerald-500/5 border border-emerald-500/10"
                 >
                   <span className="flex items-center gap-2">
                     <Layers className="w-4 h-4 text-emerald-400" />
-                    <span>클라우드 DB: 즉시 연동됨</span>
+                    <span>클라우드 DB: 연결됨</span>
                   </span>
                   <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
                 </div>
 
                 {!isStandalone && (
-                  <div>
+                  <div className="pt-1.5">
                     {deferredPrompt ? (
                       <button
                         id="installBtn"
@@ -351,7 +327,7 @@ export default function App() {
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         
         {/* Mobile Header - Hidden when viewing the BoardList list view on mobile */}
-        {!(activeTab === 'board' && boardView === 'list') && (
+        {boardView !== 'list' && (
           <header className="lg:hidden h-14 shrink-0 bg-brand-card border-b border-brand-border px-4 flex items-center justify-between animate-fade-in">
             <div className="flex items-center gap-2">
               <button 
@@ -362,15 +338,6 @@ export default function App() {
               </button>
               <span className="text-sm font-extrabold text-brand-text font-serif">Tax-Forensics</span>
             </div>
-
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setActiveTab('guide')}
-                className="px-2.5 py-1.5 bg-brand-secondary hover:bg-brand-hover text-brand-text text-[10px] font-bold rounded-lg border border-brand-border/40 cursor-pointer"
-              >
-                연동 가이드
-              </button>
-            </div>
           </header>
         )}
 
@@ -378,10 +345,10 @@ export default function App() {
         <div className="flex-1 flex overflow-hidden">
           
           {/* Column 2: list items. 
-              Always show on desktop. On mobile, show when activeTab is board AND boardView is list. */}
+              Always show on desktop. On mobile, show when boardView is list. */}
           <section 
             className={`w-full lg:w-[380px] shrink-0 border-r border-brand-border bg-brand-card flex flex-col h-full overflow-hidden ${
-              activeTab === 'board' && boardView === 'list' ? 'flex' : 'hidden lg:flex'
+              boardView === 'list' ? 'flex' : 'hidden lg:flex'
             }`}
           >
             <BoardList 
@@ -389,19 +356,16 @@ export default function App() {
               loading={postsLoading}
               selectedCategory={selectedCategory}
               selectedPostId={selectedPost?.id}
-              currentUser={currentUser}
+              currentUser={null}
               onWriteClick={() => {
                 setBoardView('write');
-                setActiveTab('board');
               }}
               onPostClick={(post) => {
                 setSelectedPost(post);
                 setBoardView('detail');
-                setActiveTab('board');
               }}
               fetchPosts={fetchPosts}
               onMenuClick={() => setMobileMenuOpen(true)}
-              onLoginClick={() => setActiveTab('profile')}
               onInstallClick={!isStandalone ? () => {
                 if (deferredPrompt) {
                   handleInstallApp();
@@ -414,86 +378,76 @@ export default function App() {
           </section>
 
           {/* Column 3: Active Detail/Form view panel.
-              Always show on desktop. On mobile, show when view is not list, or when activeTab is profile or guide. */}
+              Always show on desktop. On mobile, show when view is not list. */}
           <main 
             className={`flex-1 h-full bg-[#f3f5f8] overflow-y-auto pt-0 px-4 md:px-6 lg:px-8 pb-4 md:pb-6 lg:pb-8 relative ${
-              activeTab === 'board' && boardView === 'list' ? 'hidden lg:block' : 'block'
+              boardView === 'list' ? 'hidden lg:block' : 'block'
             }`}
           >
 
 
             <AnimatePresence mode="wait">
               <motion.div
-                key={`${activeTab}-${boardView}-${selectedPost?.id}`}
+                key={`${boardView}-${selectedPost?.id}`}
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
                 transition={{ duration: 0.2 }}
                 className="max-w-3xl mx-auto h-full"
               >
-                {activeTab === 'board' && (
-                  <>
-                    {boardView === 'detail' && selectedPost ? (
-                      <PostDetail 
-                        post={selectedPost}
-                        currentUser={currentUser}
-                        onBack={() => {
-                          setBoardView('list');
-                        }}
-                        onEdit={(post, pwd) => {
-                          setPostToEdit(post);
-                          setEditPassword(pwd || '');
-                          setBoardView('edit');
-                        }}
-                        onDeleted={() => {
-                          setSelectedPost(null);
-                          setBoardView('list');
-                          fetchPosts();
-                        }}
-                        onLikeUpdated={() => setLikesUpdateTrigger(prev => prev + 1)}
-                      />
-                    ) : boardView === 'write' ? (
-                      <PostForm 
-                        currentUser={null}
-                        onSuccess={() => {
-                          setBoardView('list');
-                          fetchPosts();
-                        }}
-                        onCancel={() => setBoardView('list')}
-                      />
-                    ) : boardView === 'edit' && postToEdit ? (
-                      <PostForm 
-                        postToEdit={postToEdit}
-                        editPassword={editPassword}
-                        currentUser={null}
-                        onSuccess={() => {
-                          setBoardView('list');
-                          setEditPassword('');
-                          fetchPosts();
-                        }}
-                        onCancel={() => {
-                          setBoardView('list');
-                          setEditPassword('');
-                        }}
-                      />
-                    ) : (
-                      /* Empty list state template on board */
-                      <div className="pt-4 md:pt-6 lg:pt-8 h-full">
-                        <div className="h-full flex flex-col items-center justify-center p-12 text-center bg-brand-card rounded-3xl border border-brand-border shadow-xs">
-                          <Bookmark className="w-12 h-12 text-brand-muted/70 mb-4 animate-bounce" />
-                          <h2 className="text-lg font-bold text-brand-text font-serif">열람할 내용이 없습니다</h2>
-                          <p className="text-xs text-brand-muted mt-1.5 max-w-xs mx-auto">
-                            좌측 목록에서 포스팅을 하나 클릭하시거나 새 이야기를 게시해 보세요!
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {activeTab === 'guide' && (
-                  <div className="pt-4 md:pt-6 lg:pt-8 animate-fade-in">
-                    <ConfigGuide />
+                {boardView === 'detail' && selectedPost ? (
+                  <PostDetail 
+                    post={selectedPost}
+                    currentUser={null}
+                    onBack={() => {
+                      setBoardView('list');
+                    }}
+                    onEdit={(post, pwd) => {
+                      setPostToEdit(post);
+                      setEditPassword(pwd || '');
+                      setBoardView('edit');
+                    }}
+                    onDeleted={() => {
+                      setSelectedPost(null);
+                      setBoardView('list');
+                      fetchPosts();
+                    }}
+                    onLikeUpdated={() => setLikesUpdateTrigger(prev => prev + 1)}
+                  />
+                ) : boardView === 'write' ? (
+                  <PostForm 
+                    currentUser={null}
+                    onSuccess={() => {
+                      setBoardView('list');
+                      fetchPosts();
+                    }}
+                    onCancel={() => setBoardView('list')}
+                  />
+                ) : boardView === 'edit' && postToEdit ? (
+                  <PostForm 
+                    postToEdit={postToEdit}
+                    editPassword={editPassword}
+                    currentUser={null}
+                    onSuccess={() => {
+                      setBoardView('list');
+                      setEditPassword('');
+                      fetchPosts();
+                    }}
+                    onCancel={() => {
+                      setBoardView('list');
+                      setEditPassword('');
+                    }}
+                  />
+                ) : (
+                  /* Empty list state template on board */
+                  <div className="pt-4 md:pt-6 lg:pt-8 h-full">
+                    <div className="h-full flex flex-col items-center justify-center p-12 text-center bg-brand-card rounded-3xl border border-brand-border shadow-xs">
+                      <Bookmark className="w-12 h-12 text-brand-muted/70 mb-4 animate-bounce" />
+                      <h2 className="text-lg font-bold text-brand-text font-serif">열람할 내용이 없습니다</h2>
+                      <p className="text-xs text-brand-muted mt-1.5 max-w-xs mx-auto">
+                        좌측 목록에서 포스팅을 하나 클릭하시거나 새 이야기를 게시해 보세요!
+                      </p>
+                    </div>
                   </div>
                 )}
               </motion.div>
