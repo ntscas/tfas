@@ -261,29 +261,6 @@ export default function App() {
                   </span>
                   <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
                 </div>
-
-                {!isStandalone && (
-                  <div className="pt-1.5">
-                    {deferredPrompt ? (
-                      <button
-                        id="installBtn"
-                        onClick={handleInstallApp}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 active:scale-[0.98] transition-all cursor-pointer"
-                      >
-                        <Download className="w-4 h-4 text-amber-400 animate-bounce shrink-0" />
-                        <span>Tax-Forensics 앱 설치하기</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => setShowInstallModal(true)}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 active:scale-[0.98] transition-all cursor-pointer"
-                      >
-                        <Download className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>Tax-Forensics 앱 바로 설치하기</span>
-                      </button>
-                    )}
-                  </div>
-                )}
               </nav>
             </div>
           </div>
