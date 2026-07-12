@@ -97,7 +97,7 @@ export default function BoardList({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
             </span>
-            <span>독립형 Tax Talk 앱을 설치해 보세요!</span>
+            <span>독립형 Tax-Forensics 앱을 설치해 보세요!</span>
           </div>
           <button 
             onClick={onInstallClick}
@@ -173,7 +173,7 @@ export default function BoardList({
       <div className="px-3 py-2.5 border-b border-brand-border/60 flex items-center justify-between bg-brand-secondary/35 shrink-0 overflow-hidden">
         {/* Categories Horizontal Tabs */}
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 shrink-0 select-none max-w-[70%]">
-          {(['All', '공지', '자유', '카통', '질문'] as const).map((cat) => {
+          {(['All', '공지', '자유', 'TFAS', '질문'] as const).map((cat) => {
             const isActive = (cat === 'All' && selectedCategory === 'All') || (cat === selectedCategory);
             const displayLabel = cat === 'All' ? 'ALL' : cat;
             return (
