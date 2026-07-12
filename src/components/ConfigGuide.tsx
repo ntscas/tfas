@@ -99,6 +99,20 @@ alter table public.tfas_profiles enable row level security;
 alter table public.tfas_posts enable row level security;
 alter table public.tfas_comments enable row level security;
 
+-- 기존 정책 삭제 (중복 생성 오류 방지)
+drop policy if exists "누구나 프로필 조회 가능" on public.tfas_profiles;
+drop policy if exists "누구나 프로필 생성 가능" on public.tfas_profiles;
+drop policy if exists "본인 프로필만 수정 가능" on public.tfas_profiles;
+
+drop policy if exists "누구나 게시글 조회 가능" on public.tfas_posts;
+drop policy if exists "누구나 게시글 생성 가능" on public.tfas_posts;
+drop policy if exists "본인 게시글만 수정/삭제" on public.tfas_posts;
+drop policy if exists "본인 게시글만 삭제" on public.tfas_posts;
+
+drop policy if exists "누구나 댓글 조회 가능" on public.tfas_comments;
+drop policy if exists "누구나 댓글 생성 가능" on public.tfas_comments;
+drop policy if exists "본인 댓글만 삭제" on public.tfas_comments;
+
 -- 누구나 프로필을 조회하거나 회원 가입 없이 생성을 허용합니다
 create policy "누구나 프로필 조회 가능" on public.tfas_profiles
   for select using (true);
