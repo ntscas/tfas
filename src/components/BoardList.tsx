@@ -145,18 +145,6 @@ export default function BoardList({
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
 
-          {/* Login Button next to Write Button for non-logged-in users */}
-          {!currentUser && onLoginClick && (
-            <button
-              onClick={onLoginClick}
-              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition-all shrink-0"
-              title="로그인 / 회원가입"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>로그인</span>
-            </button>
-          )}
-
           {/* New Discussion emerald button */}
           <button
             onClick={onWriteClick}
