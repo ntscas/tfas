@@ -1,0 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Inter", "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-brand-bg: #eceff3;
+  --color-brand-text: #0f172a;
+  --color-brand-primary: #10b981;
+  --color-brand-primary-hover: #059669;
+  --color-brand-secondary: #f3f5f8;
+  --color-brand-border: #e2e8f0;
+  --color-brand-card: #ffffff;
+  --color-brand-hover: #f1f5f9;
+  --color-brand-input: #f8fafc;
+  --color-brand-muted: #94a3b8;
+  --color-brand-muted-text: #475569;
+
+  --color-brand-sidebar-bg: #0d1527;
+  --color-brand-sidebar-text: #ffffff;
+  --color-brand-sidebar-muted: #64748b;
+  --color-brand-sidebar-hover: #1e293b;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-brand-bg);
+  color: var(--color-brand-text);
+  overflow-x: hidden;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+

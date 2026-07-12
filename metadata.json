@@ -1,0 +1,6 @@
+{
+  "name": "Supabase Board",
+  "description": "A collaborative community board featuring user authentication, post creation, and profile management integrated with Supabase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
