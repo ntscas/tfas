@@ -4,365 +4,571 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Copy, Check, Terminal, ExternalLink, Database, LifeBuoy } from 'lucide-react';
-import { dbService, isSupabaseConfigured, isUserConfigured } from '../supabaseClient';
+import { AuthUser, Post, Category, parseCategoryAndTitle } from './types';
+import { dbService, isSupabaseConfigured } from './supabaseClient';
+import BoardList from './components/BoardList';
+import PostDetail from './components/PostDetail';
+import PostForm from './components/PostForm';
+import { 
+  Cloud, 
+  CloudOff, 
+  Layers, 
+  Sparkles, 
+  Rss, 
+  Zap,
+  BarChart3,
+  Bookmark,
+  BookOpen,
+  Eye,
+  Heart,
+  ChevronRight,
+  Menu,
+  X,
+  Download,
+  ShieldAlert
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
-export default function ConfigGuide() {
-  const [copied, setCopied] = useState(false);
-  const [isRealDb, setIsRealDb] = useState(isSupabaseConfigured);
+export default function App() {
+  const currentUser = null; // 로그인 기능 제거 (익명 전용)
+  const [boardView, setBoardView] = useState<'list' | 'detail' | 'write' | 'edit'>('list');
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [postToEdit, setPostToEdit] = useState<Post | null>(null);
+  const [editPassword, setEditPassword] = useState<string>('');
+  const [userAvatar, setUserAvatar] = useState<string>('');
+  
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState<boolean>(false);
+  const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
+  const [isInIframe, setIsInIframe] = useState<boolean>(false);
 
-  const [customUrl, setCustomUrl] = useState(() => localStorage.getItem('tfas_custom_supabase_url') || '');
-  const [customKey, setCustomKey] = useState(() => localStorage.getItem('tfas_custom_supabase_key') || '');
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'cleared'>('idle');
-
+  // Check if already running as standalone PWA
   useEffect(() => {
-    dbService.checkConfig().then((val) => {
-      setIsRealDb(val);
-    });
+    if (typeof window !== 'undefined') {
+      setIsInIframe(window.self !== window.top);
+      const isStandaloneMode = 
+        window.matchMedia('(display-mode: standalone)').matches || 
+        (window.navigator as any).standalone === true ||
+        document.referrer.includes('android-app://');
+      setIsStandalone(isStandaloneMode);
+      console.log('[PWA] Standalone 모드 감지:', isStandaloneMode, '아이프레임 여부:', window.self !== window.top);
+      
+      // Parse shortcut actions on startup
+      const params = new URLSearchParams(window.location.search);
+      const action = params.get('action');
+      if (action === 'write') {
+        setBoardView('write');
+      } else if (action === 'board') {
+        setBoardView('list');
+      }
+    }
   }, []);
 
-  const handleSaveCredentials = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (customUrl.trim() && customKey.trim()) {
-      localStorage.setItem('tfas_custom_supabase_url', customUrl.trim());
-      localStorage.setItem('tfas_custom_supabase_key', customKey.trim());
-      setSaveStatus('saved');
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+  // listen for browser PWA triggers
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      console.log('[PWA] beforeinstallprompt 이벤트를 수신했습니다. 설치 가능 상태.');
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    const handleAppInstalled = () => {
+      console.log('[PWA] Tax-Forensics 앱이 성공적으로 설치되었습니다.');
+      setDeferredPrompt(null);
+      setIsStandalone(true);
+    };
+
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`[PWA] 사용자 선택 결과: ${outcome}`);
+      setDeferredPrompt(null);
     }
   };
 
-  const handleClearCredentials = () => {
-    localStorage.removeItem('tfas_custom_supabase_url');
-    localStorage.removeItem('tfas_custom_supabase_key');
-    setCustomUrl('');
-    setCustomKey('');
-    setSaveStatus('cleared');
-    setTimeout(() => {
-      window.location.reload();
-    }, 1000);
+  // High fidelity states
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState<'All' | Category>('All');
+  const [likesUpdateTrigger, setLikesUpdateTrigger] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Fetch posts globally to compute stats and categories counts
+  const fetchPosts = async () => {
+    setPostsLoading(true);
+    try {
+      const dbPosts = await dbService.getPosts();
+      setPosts(dbPosts);
+      
+      // Auto-select first post on initial load if on desktop and none selected
+      if (dbPosts.length > 0 && !selectedPost) {
+        setSelectedPost(dbPosts[0]);
+        if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+          setBoardView('detail');
+        } else {
+          setBoardView('list');
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPostsLoading(false);
+    }
   };
 
-  const sqlCode = `-- [익명 글쓰기 외래키 원천적 제거 및 즉시 활성화 핫픽스]
--- 아래 코드를 전부 복사하여 Supabase SQL Editor에 넣고 실행(Run)하시면,
--- 기존 데이터 손상 없이 외래키 제약조건만 즉시 제거하여 게시글 등록 실패(foreign key constraint violation)를 완벽히 해결합니다!
+  useEffect(() => {
+    fetchPosts();
+  }, [likesUpdateTrigger]);
 
--- 1. 기존 테이블에 외래키가 걸려있다면 즉시 제거 (기존 데이터를 완벽히 유지하면서 오류만 즉시 해결하는 방법)
-ALTER TABLE IF EXISTS public.tfas_posts DROP CONSTRAINT IF EXISTS tfas_posts_author_id_fkey;
-ALTER TABLE IF EXISTS public.tfas_posts DROP CONSTRAINT IF EXISTS tfas_posts_author_id_fkey1;
-ALTER TABLE IF EXISTS public.tfas_comments DROP CONSTRAINT IF EXISTS tfas_comments_author_id_fkey;
-ALTER TABLE IF EXISTS public.tfas_comments DROP CONSTRAINT IF EXISTS tfas_comments_author_id_fkey1;
+  // Statistics calculation
+  const totalPosts = posts.length;
+  const totalViews = posts.reduce((sum, p) => sum + p.views, 0);
+  const totalLikes = posts.reduce((sum, p) => {
+    const val = localStorage.getItem(`likes_count_${p.id}`);
+    return sum + (val ? parseInt(val, 10) : 0);
+  }, 0);
 
--- 2) 모든 테이블 외래키 제약조건 동적 전수 검사 및 강제 제거 블록
-DO $$
-DECLARE
-    r RECORD;
-BEGIN
-    -- 게시글(tfas_posts) 테이블의 author_id 외래키 제거
-    FOR r IN (
-        SELECT tc.constraint_name 
-        FROM information_schema.table_constraints AS tc 
-        JOIN information_schema.key_column_usage AS kcu
-          ON tc.constraint_name = kcu.constraint_name
-          AND tc.table_schema = kcu.table_schema
-        WHERE tc.constraint_type = 'FOREIGN KEY' 
-          AND tc.table_name = 'tfas_posts'
-          AND kcu.column_name = 'author_id'
-    ) LOOP
-        EXECUTE 'ALTER TABLE public.tfas_posts DROP CONSTRAINT IF EXISTS ' || quote_ident(r.constraint_name);
-    END LOOP;
+  // Categories counts calculation
+  const getCategoryCount = (cat: 'All' | Category) => {
+    if (cat === 'All') return posts.length;
+    return posts.filter(p => parseCategoryAndTitle(p.title).category === cat).length;
+  };
 
-    -- 댓글(tfas_comments) 테이블의 author_id 외래키 제거
-    FOR r IN (
-        SELECT tc.constraint_name 
-        FROM information_schema.table_constraints AS tc 
-        JOIN information_schema.key_column_usage AS kcu
-          ON tc.constraint_name = kcu.constraint_name
-          AND tc.table_schema = kcu.table_schema
-        WHERE tc.constraint_type = 'FOREIGN KEY' 
-          AND tc.table_name = 'tfas_comments'
-          AND kcu.column_name = 'author_id'
-    ) LOOP
-        EXECUTE 'ALTER TABLE public.tfas_comments DROP CONSTRAINT IF EXISTS ' || quote_ident(r.constraint_name);
-    END LOOP;
-END $$;
-
--- [새로운 설치를 위한 최적화된 테이블 생성 코드]
--- (이미 테이블이 존재하는 경우, 아래 create table은 실행되지 않거나 오류가 나도 무방하며 위 alter/drop 구문이 정상 작동하여 즉시 게시 가능합니다)
-
--- 1. 사용자 프로필 테이블 생성 (public schema)
-create table if not exists public.tfas_profiles (
-  id uuid primary key, 
-  name text not null,
-  bio text,
-  avatar_url text,
-  updated_at timestamp with time zone default timezone('utc'::text, now())
-);
-
--- 2. 게시판 글 테이블 생성 (외래키 제약을 완전히 제거하여 익명/회원 글쓰기 완벽 지원)
-create table if not exists public.tfas_posts (
-  id uuid default gen_random_uuid() primary key,
-  title text not null,
-  content text not null,
-  author_id uuid not null, -- (외래키 제약 제거)
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  views int default 0 not null,
-  password text -- 익명 게시글 수정/삭제용 비밀번호
-);
-
--- 3. 댓글 테이블 생성 (외래키 제약 완전히 제거)
-create table if not exists public.tfas_comments (
-  id uuid default gen_random_uuid() primary key,
-  post_id uuid references public.tfas_posts(id) on delete cascade not null,
-  author_id uuid not null, -- (외래키 제약 제거)
-  content text not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
--- 4. Row Level Security (RLS) 및 정책 설정
--- (참고: 로그인 없이도 익명 글쓰기가 완벽하게 클라우드에 연동되도록 unauthenticated/anon 생성을 전면 허용한 정책입니다)
-alter table public.tfas_profiles enable row level security;
-alter table public.tfas_posts enable row level security;
-alter table public.tfas_comments enable row level security;
-
--- 기존 정책 삭제 (중복 생성 오류 방지)
-drop policy if exists "누구나 프로필 조회 가능" on public.tfas_profiles;
-drop policy if exists "누구나 프로필 생성 가능" on public.tfas_profiles;
-drop policy if exists "본인 프로필만 수정 가능" on public.tfas_profiles;
-
-drop policy if exists "누구나 게시글 조회 가능" on public.tfas_posts;
-drop policy if exists "누구나 게시글 생성 가능" on public.tfas_posts;
-drop policy if exists "본인 게시글만 수정/삭제" on public.tfas_posts;
-drop policy if exists "본인 게시글만 삭제" on public.tfas_posts;
-
-drop policy if exists "누구나 댓글 조회 가능" on public.tfas_comments;
-drop policy if exists "누구나 댓글 생성 가능" on public.tfas_comments;
-drop policy if exists "본인 댓글만 삭제" on public.tfas_comments;
-
--- 누구나 프로필을 조회하거나 회원 가입 없이 생성을 허용합니다
-create policy "누구나 프로필 조회 가능" on public.tfas_profiles
-  for select using (true);
-
-create policy "누구나 프로필 생성 가능" on public.tfas_profiles
-  for insert with check (true);
-
-create policy "본인 프로필만 수정 가능" on public.tfas_profiles
-  for all using (auth.uid() = id);
-
--- 누구나 게시글을 조회하거나 회원 가입 없이 게시할 수 있도록 허용합니다
-create policy "누구나 게시글 조회 가능" on public.tfas_posts
-  for select using (true);
-
-create policy "누구나 게시글 생성 가능" on public.tfas_posts
-  for insert with check (true);
-
-create policy "본인 게시글만 수정/삭제" on public.tfas_posts
-  for update using (auth.uid() = author_id);
-
-create policy "본인 게시글만 삭제" on public.tfas_posts
-  for delete using (auth.uid() = author_id);
-
--- 누구나 댓글을 조회되거나 작성할 수 있도록 허용합니다
-create policy "누구나 댓글 조회 가능" on public.tfas_comments
-  for select using (true);
-
-create policy "누구나 댓글 생성 가능" on public.tfas_comments
-  for insert with check (true);
-
-create policy "본인 댓글만 삭제" on public.tfas_comments
-  for delete using (auth.uid() = author_id);
-
--- [보안 관련 팁] 혹시 RLS 설정으로 인해 권한 에러(insufficient privileges 등)가 발생한다면,
--- 아래 3줄 주석을 풀고 실행하여 RLS 보안 검사를 임시로 비활성화하면 즉시 정상 작동합니다!
--- alter table public.tfas_profiles disable row level security;
--- alter table public.tfas_posts disable row level security;
--- alter table public.tfas_comments disable row level security;
-`;
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(sqlCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  // Switch category
+  const handleCategorySelect = (cat: 'All' | Category) => {
+    setSelectedCategory(cat);
+    setMobileMenuOpen(false);
+    
+    // Auto preview first post in this selected category on desktop
+    const filtered = cat === 'All' 
+      ? posts 
+      : posts.filter(p => parseCategoryAndTitle(p.title).category === cat);
+      
+    if (filtered.length > 0) {
+      setSelectedPost(filtered[0]);
+      if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+        setBoardView('detail');
+      } else {
+        setBoardView('list');
+      }
+    } else {
+      setSelectedPost(null);
+      setBoardView('list');
+    }
   };
 
   return (
-    <div className="bg-brand-card text-brand-text rounded-3xl p-8 shadow-xs border border-brand-border">
-      <div className="flex items-center gap-3 border-b border-brand-border/60 pb-5 mb-5">
-        <div className="p-2 bg-brand-secondary text-brand-primary rounded-xl border border-brand-border/40">
-          <Database size={24} />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold tracking-tight font-serif text-brand-text">Supabase 데이터베이스 연동 가이드</h2>
-          <p className="text-xs text-brand-muted">실시간 클라우드 DB 연동을 위한 3단계 세팅법</p>
-        </div>
-      </div>
-
-      <div className="space-y-6">
-        <div>
-          <h3 className="text-sm font-bold text-brand-text flex items-center gap-2 mb-2 font-serif">
-            <span className="w-5 h-5 rounded-full bg-brand-secondary text-brand-primary border border-brand-border/40 text-xs flex items-center justify-center font-bold">1</span>
-            Supabase 프로젝트 만들기
-          </h3>
-          <p className="text-xs text-brand-muted-text ml-7 leading-relaxed font-semibold">
-            <a 
-              href="https://supabase.com" 
-              target="_blank" 
-              rel="noreferrer" 
-              className="text-brand-primary hover:underline inline-flex items-center gap-1 font-bold"
+    <div className="h-screen w-screen bg-brand-bg text-brand-text flex overflow-hidden font-sans" id="app-root">
+      
+      {/* 1. Sidebar Column (Left) - Hidden on Mobile, Collapsible */}
+      <aside 
+        className={`fixed inset-y-0 left-0 z-50 w-[260px] bg-brand-sidebar-bg border-r border-[#1e293b] flex flex-col justify-between p-6 transition-transform duration-300 transform lg:translate-x-0 lg:static lg:flex shrink-0 ${
+          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="space-y-8">
+          {/* Logo Brand Icon Block */}
+          <div className="flex items-center justify-between">
+            <div 
+              onClick={() => handleCategorySelect('All')}
+              className="flex items-center gap-3 cursor-pointer"
+              id="brand-logo"
             >
-              Supabase 공식 홈페이지 <ExternalLink size={12} />
-            </a>
-            에 접속하여 새 프로젝트를 무료로 생성하세요.
-          </p>
-        </div>
-
-        <div>
-          <h3 className="text-sm font-bold text-brand-text flex items-center gap-2 mb-2 font-serif">
-            <span className="w-5 h-5 rounded-full bg-brand-secondary text-brand-primary border border-brand-border/40 text-xs flex items-center justify-center font-bold">2</span>
-            SQL Editor에 테이블 스크립트 실행하기
-          </h3>
-          <p className="text-xs text-brand-muted-text ml-7 leading-relaxed mb-3 font-semibold">
-            Supabase 대시보드 좌측 메뉴 중 <strong className="text-brand-text font-serif">[SQL Editor]</strong> 탭을 클릭하고, 
-            <strong className="text-brand-text font-serif">[New Query]</strong>를 생성한 뒤 아래 코드를 복사하여 실행(<kbd className="bg-brand-secondary border border-brand-border/40 px-1 py-0.5 rounded text-brand-primary font-bold">Run</kbd>)해 주세요.
-          </p>
-
-          <div className="relative ml-7 bg-brand-secondary rounded-2xl border border-brand-border/60 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2 bg-brand-secondary border-b border-brand-border/50">
-              <span className="text-xs font-mono text-brand-muted-text flex items-center gap-1.5">
-                <Terminal size={14} className="text-brand-muted" />
-                schema_setup.sql
-              </span>
-              <button
-                onClick={copyToClipboard}
-                className="flex items-center gap-1 text-xs text-brand-muted-text hover:text-brand-primary px-2.5 py-1 rounded-lg bg-brand-card hover:bg-brand-secondary border border-brand-border/40 cursor-pointer transition-colors"
-                id="btn-copy-sql"
-              >
-                {copied ? (
-                  <>
-                    <Check size={14} className="text-emerald-600" />
-                    <span className="text-emerald-600 font-bold">복사됨</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy size={14} />
-                    <span className="font-semibold">코드 복사</span>
-                  </>
-                )}
-              </button>
+              <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.3)] animate-pulse">
+                <Zap className="w-5 h-5 text-emerald-400 stroke-[2.5]" />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[11px] font-bold text-emerald-400 tracking-tight leading-tight">Tax-Forensics</span>
+                <h1 className="text-base font-extrabold text-white tracking-tight leading-none">Tax-Forensics</h1>
+              </div>
             </div>
-            <pre className="p-4 text-xs font-mono overflow-x-auto max-h-60 text-brand-text/90 antialiased leading-relaxed scrollbar-thin scrollbar-thumb-brand-border">
-              {sqlCode}
-            </pre>
+
+            {/* Mobile close sidebar */}
+            <button 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block lg:hidden text-brand-sidebar-muted hover:text-white p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Navigation Category list */}
+          <div className="space-y-6">
+            <div>
+              <p className="text-[10px] text-brand-sidebar-muted font-extrabold uppercase tracking-widest pl-2 mb-3">
+                Navigation (카테고리)
+              </p>
+              <nav className="space-y-1">
+                {(['All', '공지', '자유', 'TFAS', '질문'] as const).map((cat) => {
+                  const isActive = selectedCategory === cat;
+                  const label = cat === 'All' ? 'All Discussions' : cat;
+                  const count = getCategoryCount(cat);
+                  const isNotice = cat === '공지';
+
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => handleCategorySelect(cat)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        isActive 
+                          ? 'bg-brand-primary text-white shadow-md' 
+                          : 'text-slate-300 hover:bg-brand-sidebar-hover hover:text-white'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full ${isNotice ? 'bg-red-500' : 'bg-brand-primary'}`} />
+                        <span>{label}</span>
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                        isActive 
+                          ? 'bg-white/25 text-white' 
+                          : isNotice 
+                            ? 'bg-red-500/10 text-red-400 border border-red-500/20' 
+                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            {/* Utility links */}
+            <div>
+              <p className="text-[10px] text-brand-sidebar-muted font-extrabold uppercase tracking-widest pl-2 mb-3">
+                Database Status
+              </p>
+              <nav className="space-y-1">
+                <div
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-300 bg-emerald-500/5 border border-emerald-500/10"
+                >
+                  <span className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-emerald-400" />
+                    <span>클라우드 DB: 연결됨</span>
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                </div>
+
+                {!isStandalone && (
+                  <div className="pt-1.5">
+                    {deferredPrompt ? (
+                      <button
+                        id="installBtn"
+                        onClick={handleInstallApp}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 active:scale-[0.98] transition-all cursor-pointer"
+                      >
+                        <Download className="w-4 h-4 text-amber-400 animate-bounce shrink-0" />
+                        <span>Tax-Forensics 앱 설치하기</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setShowInstallModal(true)}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 active:scale-[0.98] transition-all cursor-pointer"
+                      >
+                        <Download className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Tax-Forensics 앱 바로 설치하기</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </nav>
+            </div>
           </div>
         </div>
 
-        <div>
-          <h3 className="text-sm font-bold text-brand-text flex items-center gap-2 mb-2 font-serif">
-            <span className="w-5 h-5 rounded-full bg-brand-secondary text-brand-primary border border-brand-border/40 text-xs flex items-center justify-center font-bold">3</span>
-            환경변수 설정 및 브라우저 즉시 연동하기 (추천)
-          </h3>
-          <p className="text-xs text-brand-muted-text ml-7 leading-relaxed font-semibold mb-3">
-            Supabase 대시보드의 <strong className="text-brand-text">[Project Settings] → [API]</strong> 메뉴에서 
-            <strong className="text-brand-primary">Project URL</strong> 및 <strong className="text-brand-primary">Anon Key</strong>를 복사해 주세요.
-            깃허브(GitHub Pages) 배포 상태에서도 코드를 수정하거나 다시 커밋할 필요 없이, 아래에 값을 입력하고 저장하시면 <strong>해당 기기의 브라우저에 즉시 연동</strong>됩니다!
-          </p>
-
-          <form onSubmit={handleSaveCredentials} className="ml-7 space-y-3 bg-brand-secondary border border-brand-border/40 rounded-2xl p-4 md:p-5">
-            <div className="space-y-1">
-              <label className="text-xs font-serif font-bold text-brand-text flex items-center justify-between">
-                <span>Supabase Project URL</span>
-                <span className="text-[10px] text-brand-muted-text font-mono font-medium">VITE_SUPABASE_URL</span>
-              </label>
-              <input
-                type="url"
-                required
-                placeholder="https://your-project.supabase.co"
-                value={customUrl}
-                onChange={(e) => setCustomUrl(e.target.value)}
-                className="w-full bg-brand-card border border-brand-border/60 hover:border-brand-primary/50 focus:border-brand-primary px-3 py-2 rounded-xl text-xs font-mono text-brand-text focus:outline-none transition-colors"
-              />
+        {/* Bottom Bento Box Stats */}
+        <div className="space-y-4 pt-6 border-t border-[#1e293b]">
+          <div>
+            <p className="text-[10px] text-brand-sidebar-muted font-extrabold uppercase tracking-widest pl-2 mb-2.5">
+              Database Stat
+            </p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="bg-[#1e293b]/40 border border-[#2e3c54]/40 p-2 rounded-2xl">
+                <p className="text-[9px] text-brand-sidebar-muted font-extrabold uppercase">Posts</p>
+                <p className="text-xs font-black text-white mt-0.5">{totalPosts}</p>
+              </div>
+              <div className="bg-[#1e293b]/40 border border-[#2e3c54]/40 p-2 rounded-2xl">
+                <p className="text-[9px] text-brand-sidebar-muted font-extrabold uppercase">Views</p>
+                <p className="text-xs font-black text-emerald-400 mt-0.5">{totalViews}</p>
+              </div>
+              <div className="bg-[#1e293b]/40 border border-[#2e3c54]/40 p-2 rounded-2xl">
+                <p className="text-[9px] text-brand-sidebar-muted font-extrabold uppercase">Likes</p>
+                <p className="text-xs font-black text-pink-400 mt-0.5">{totalLikes}</p>
+              </div>
             </div>
+          </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-serif font-bold text-brand-text flex items-center justify-between">
-                <span>Supabase Anon Key (Public)</span>
-                <span className="text-[10px] text-brand-muted-text font-mono font-medium">VITE_SUPABASE_ANON_KEY</span>
-              </label>
-              <textarea
-                required
-                rows={2}
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5c..."
-                value={customKey}
-                onChange={(e) => setCustomKey(e.target.value)}
-                className="w-full bg-brand-card border border-brand-border/60 hover:border-brand-primary/50 focus:border-brand-primary px-3 py-2 rounded-xl text-xs font-mono text-brand-text focus:outline-none transition-colors resize-none leading-relaxed"
-              />
+          {/* Secure Anonymous tip box */}
+          <div className="bg-[#1e293b]/50 p-3.5 rounded-2xl border border-[#2e3c54]/30 space-y-1.5">
+            <p className="text-[10px] text-emerald-400 font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+              <span>🔒 100% 안전한 익명 광장</span>
+            </p>
+            <p className="text-[10px] text-brand-sidebar-muted leading-relaxed font-semibold">
+              Tax-Forensics는 별도의 가입이나 로그인이 불필요합니다. 글 작성 시 입력한 비밀번호를 통해 자유롭고 안전하게 게시글을 수정 및 삭제할 수 있습니다.
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      {/* App Core Container */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        
+        {/* Mobile Header - Hidden when viewing the BoardList list view on mobile */}
+        {boardView !== 'list' && (
+          <header className="lg:hidden h-14 shrink-0 bg-brand-card border-b border-brand-border px-4 flex items-center justify-between animate-fade-in">
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setMobileMenuOpen(true)}
+                className="p-1.5 text-brand-text hover:bg-brand-secondary rounded-lg"
+              >
+                <Menu className="w-5.5 h-5.5" />
+              </button>
+              <span className="text-sm font-extrabold text-brand-text font-serif">Tax-Forensics</span>
             </div>
+          </header>
+        )}
 
-            <div className="pt-1 flex flex-wrap gap-2 justify-between items-center">
-              <div>
-                {saveStatus === 'saved' && (
-                  <span className="text-xs text-emerald-600 font-bold flex items-center gap-1 animate-pulse">
-                    <Check size={14} /> 브라우저 저장 성공! 잠시 후 자동 새로고침됩니다...
-                  </span>
+        {/* 2 & 3. Split Desktop Content Area */}
+        <div className="flex-1 flex overflow-hidden">
+          
+          {/* Column 2: list items. 
+              Always show on desktop. On mobile, show when boardView is list. */}
+          <section 
+            className={`w-full lg:w-[380px] shrink-0 border-r border-brand-border bg-brand-card flex flex-col h-full overflow-hidden ${
+              boardView === 'list' ? 'flex' : 'hidden lg:flex'
+            }`}
+          >
+            <BoardList 
+              posts={posts}
+              loading={postsLoading}
+              selectedCategory={selectedCategory}
+              selectedPostId={selectedPost?.id}
+              currentUser={null}
+              onWriteClick={() => {
+                setBoardView('write');
+              }}
+              onPostClick={(post) => {
+                setSelectedPost(post);
+                setBoardView('detail');
+              }}
+              fetchPosts={fetchPosts}
+              onMenuClick={() => setMobileMenuOpen(true)}
+              onInstallClick={!isStandalone ? () => {
+                if (deferredPrompt) {
+                  handleInstallApp();
+                } else {
+                  setShowInstallModal(true);
+                }
+              } : undefined}
+              onCategorySelect={handleCategorySelect}
+            />
+          </section>
+
+          {/* Column 3: Active Detail/Form view panel.
+              Always show on desktop. On mobile, show when view is not list. */}
+          <main 
+            className={`flex-1 h-full bg-[#f3f5f8] overflow-y-auto pt-0 px-4 md:px-6 lg:px-8 pb-4 md:pb-6 lg:pb-8 relative ${
+              boardView === 'list' ? 'hidden lg:block' : 'block'
+            }`}
+          >
+
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`${boardView}-${selectedPost?.id}`}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.2 }}
+                className="max-w-3xl mx-auto h-full"
+              >
+                {boardView === 'detail' && selectedPost ? (
+                  <PostDetail 
+                    post={selectedPost}
+                    currentUser={null}
+                    onBack={() => {
+                      setBoardView('list');
+                    }}
+                    onEdit={(post, pwd) => {
+                      setPostToEdit(post);
+                      setEditPassword(pwd || '');
+                      setBoardView('edit');
+                    }}
+                    onDeleted={() => {
+                      setSelectedPost(null);
+                      setBoardView('list');
+                      fetchPosts();
+                    }}
+                    onLikeUpdated={() => setLikesUpdateTrigger(prev => prev + 1)}
+                  />
+                ) : boardView === 'write' ? (
+                  <PostForm 
+                    currentUser={null}
+                    onSuccess={() => {
+                      setBoardView('list');
+                      fetchPosts();
+                    }}
+                    onCancel={() => setBoardView('list')}
+                  />
+                ) : boardView === 'edit' && postToEdit ? (
+                  <PostForm 
+                    postToEdit={postToEdit}
+                    editPassword={editPassword}
+                    currentUser={null}
+                    onSuccess={() => {
+                      setBoardView('list');
+                      setEditPassword('');
+                      fetchPosts();
+                    }}
+                    onCancel={() => {
+                      setBoardView('list');
+                      setEditPassword('');
+                    }}
+                  />
+                ) : (
+                  /* Empty list state template on board */
+                  <div className="pt-4 md:pt-6 lg:pt-8 h-full">
+                    <div className="h-full flex flex-col items-center justify-center p-12 text-center bg-brand-card rounded-3xl border border-brand-border shadow-xs">
+                      <Bookmark className="w-12 h-12 text-brand-muted/70 mb-4 animate-bounce" />
+                      <h2 className="text-lg font-bold text-brand-text font-serif">열람할 내용이 없습니다</h2>
+                      <p className="text-xs text-brand-muted mt-1.5 max-w-xs mx-auto">
+                        좌측 목록에서 포스팅을 하나 클릭하시거나 새 이야기를 게시해 보세요!
+                      </p>
+                    </div>
+                  </div>
                 )}
-                {saveStatus === 'cleared' && (
-                  <span className="text-xs text-brand-primary font-bold flex items-center gap-1 animate-pulse">
-                    초기화 성공! 잠시 후 기본 데모 DB로 복구됩니다...
-                  </span>
+              </motion.div>
+            </AnimatePresence>
+          </main>
+        </div>
+      </div>
+
+      {/* Tax-Forensics PWA Install Guidance Modal */}
+      <AnimatePresence>
+        {showInstallModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-xs" id="install-guide-backdrop">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 w-full max-w-sm border border-slate-100 shadow-2xl relative space-y-4.5 text-slate-800"
+            >
+              <button 
+                onClick={() => setShowInstallModal(false)}
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                id="btn-close-modal"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
+                  <Download className="w-5 h-5 text-emerald-500 animate-bounce" />
+                </div>
+                <h3 className="text-base font-black text-slate-900 font-serif">Tax-Forensics 앱 설치하기</h3>
+                <p className="text-[11px] text-slate-500 font-semibold leading-relaxed">
+                  독립형 앱(PWA)으로 설치해 보세요! 일반 모바일 앱처럼 홈화면에서 원터치로 빠르게 접속할 수 있습니다.
+                </p>
+              </div>
+
+              {/* Special Context 1: Preview Iframe detected */}
+              {isInIframe && (
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl space-y-2 text-center">
+                  <p className="text-[10px] text-amber-700 font-extrabold leading-relaxed">
+                    ⚠️ 현재 AI Studio 실시간 편집 프리뷰(아이프레임) 내부에서는 모바일 브라우저 보안 정책상 다이렉트 설치가 막혀있을 수 있습니다.
+                  </p>
+                  <button
+                    onClick={() => window.open(window.location.origin, '_blank')}
+                    className="w-full py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black text-[10px] rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <span>새 창(전체 화면)으로 열기 ➔</span>
+                  </button>
+                  <p className="text-[9px] text-slate-400 font-bold">
+                    ※ 새 창에서 열면 즉시 원클릭 설치 버튼이 정상 작동합니다!
+                  </p>
+                </div>
+              )}
+
+              {/* Special Context 2: One-click Browser prompt is available */}
+              {deferredPrompt && (
+                <div className="p-1">
+                  <button
+                    onClick={() => {
+                      handleInstallApp();
+                      setShowInstallModal(false);
+                    }}
+                    className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 active:scale-[0.98] text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md flex items-center justify-center gap-2 animate-pulse"
+                  >
+                    <Download className="w-4 h-4 animate-bounce" />
+                    <span>지금 기기에 즉시 설치하기</span>
+                  </button>
+                </div>
+              )}
+
+              {/* iOS vs Android Guide Tabs */}
+              <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50 space-y-3">
+                {typeof window !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-rose-500 pb-1.5 border-b border-slate-100">
+                      <span>📱 아이폰/아이패드 (iOS Safari) 설치 방법</span>
+                    </div>
+                    <ol className="text-[11px] text-slate-600 space-y-2.5 list-decimal list-inside font-semibold leading-relaxed">
+                      <li>
+                        Safari 브라우저 하단 툴바의 <span className="font-bold text-emerald-600">[공유]</span> 아이콘(네모와 위 화살표 아이콘)을 선택합니다.
+                      </li>
+                      <li>
+                        목록에서 아래로 조금 스크롤하여 <span className="font-bold text-slate-950 bg-slate-200/60 p-0.5 px-1.5 rounded">[홈 화면에 추가]</span> 메뉴를 클릭합니다.
+                      </li>
+                      <li>
+                        우측 상단의 <span className="font-bold text-slate-950">[추가]</span> 버튼을 터치하여 설치를 완료합니다!
+                      </li>
+                    </ol>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-600 pb-1.5 border-b border-slate-100">
+                      <span>📱 안드로이드 / 모바일 크롬 설치 방법</span>
+                    </div>
+                    <ol className="text-[11px] text-slate-600 space-y-2.5 list-decimal list-inside font-semibold leading-relaxed">
+                      <li>
+                        모바일 크롬 주소창 오른쪽의 <span className="font-bold text-slate-950 bg-slate-200/60 p-0.5 px-1.5 rounded">[점 3개]</span>를 누르고 <span className="font-bold text-emerald-600">[앱 설치]</span> 또는 <span className="font-bold text-slate-950 bg-slate-200/60 p-0.5 px-1.5 rounded">[홈 화면에 추가]</span>를 터치합니다.
+                      </li>
+                      <li>
+                        또는, 이 가이드 상단의 <span className="text-emerald-600 font-extrabold">[원클릭 즉시 설치]</span> 버튼이 보일 시 클릭 한 번으로 손쉽게 추가할 수 있습니다!
+                      </li>
+                    </ol>
+                  </div>
                 )}
               </div>
 
               <div className="flex gap-2">
-                {(localStorage.getItem('tfas_custom_supabase_url') || localStorage.getItem('tfas_custom_supabase_key')) && (
-                  <button
-                    type="button"
-                    onClick={handleClearCredentials}
-                    className="px-3 py-2 rounded-xl bg-red-50 text-red-600 border border-red-200 text-xs font-bold hover:bg-red-100 transition-all cursor-pointer"
-                  >
-                    연동 초기화
-                  </button>
-                )}
                 <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary/90 text-brand-secondary font-serif font-bold text-xs shadow-sm hover:shadow transition-all cursor-pointer"
+                  onClick={() => setShowInstallModal(false)}
+                  className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] rounded-xl active:scale-[0.98] transition-all cursor-pointer text-center"
                 >
-                  브라우저 즉시 저장 및 연결
+                  가이드 닫기
                 </button>
               </div>
-            </div>
-          </form>
-
-          <div className="mt-3 ml-7 bg-brand-secondary/40 rounded-xl p-3 border border-brand-border/30 text-[11px] text-brand-muted-text font-semibold leading-relaxed">
-            💡 <strong>정석 연동 방법 (모든 방문자 동시 연동):</strong> 깃허브 레포지토리의 <strong className="text-brand-text">[Settings] → [Secrets and variables] → [Actions]</strong> 메뉴에 <code className="text-brand-text font-bold">VITE_SUPABASE_URL</code>와 <code className="text-brand-text font-bold">VITE_SUPABASE_ANON_KEY</code>를 각각 등록해 주시면, 사이트를 방문하는 모든 사용자에게 자동 동기화되는 영구 배포판이 완성됩니다.
+            </motion.div>
           </div>
-        </div>
-      </div>
-
-      <div className="mt-6 pt-5 border-t border-brand-border/60 flex items-start gap-2.5 text-xs text-brand-muted-text font-semibold">
-        {isUserConfigured ? (
-          <>
-            <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shrink-0 mt-1.5" />
-            <p className="leading-relaxed">
-              <strong className="text-brand-text font-serif">현재 상태:</strong> <span className="text-emerald-600 font-bold">개인 Supabase 클라우드 DB 연동 완료!</span> 설정하신 개별 환경변수(VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)가 완벽하게 수신되어, 본인 소유의 전용 실시간 클라우드 DB에 직접 안전하게 동기화가 이루어지고 있습니다.
-            </p>
-          </>
-        ) : isRealDb ? (
-          <>
-            <div className="w-2.5 h-2.5 bg-brand-primary rounded-full animate-pulse shrink-0 mt-1.5" />
-            <p className="leading-relaxed">
-              <strong className="text-brand-text font-serif">현재 상태:</strong> <span className="text-brand-primary font-bold">공용 실시간 데모 클라우드 DB 연동 중!</span> 아직 맞춤 설정이 활성화되지 않아 기본 공용 클라우드 DB에 동기화가 이루어지고 있습니다. 상단의 단계들을 마쳐 본인의 Supabase 환경변수를 입력하시면 나만의 전용 프라이빗 DB로의 전환이 즉시 완료됩니다!
-            </p>
-          </>
-        ) : (
-          <>
-            <LifeBuoy size={16} className="text-brand-primary shrink-0 mt-0.5" />
-            <p className="leading-relaxed">
-              <strong className="text-brand-text font-serif">현재 상태:</strong> 환경변수가 아직 설정되지 않았거나 유효하지 않아 안전한 <span className="text-brand-primary font-bold underline">로컬 전용 가상 데이터베이스(LocalStorage)</span>로 활성화되었습니다. 프로필 수정, 게시물 작성 및 회원가입 테스트가 완전하게 실시간 가상으로 지원됩니다.
-            </p>
-          </>
         )}
-      </div>
+
+        {/* Passive Connection status is handled via sidebar indicator */}
+      </AnimatePresence>
+
     </div>
   );
 }
