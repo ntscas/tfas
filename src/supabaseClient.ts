@@ -27,9 +27,10 @@ function cleanSupabaseUrl(url: string): string {
 }
 
 // Read credentials directly from environment variables (.env file)
-const metaEnv = (import.meta as any).env || {};
-const envUrl = cleanSupabaseUrl(metaEnv.VITE_SUPABASE_URL || '');
-const envAnonKey = cleanEnvValue(metaEnv.VITE_SUPABASE_ANON_KEY || '');
+// @ts-ignore
+const envUrl = cleanSupabaseUrl(import.meta.env.VITE_SUPABASE_URL || '');
+// @ts-ignore
+const envAnonKey = cleanEnvValue(import.meta.env.VITE_SUPABASE_ANON_KEY || '');
 
 export const supabaseUrl = envUrl;
 export const supabaseAnonKey = envAnonKey;
