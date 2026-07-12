@@ -26,9 +26,9 @@ function cleanSupabaseUrl(url: string): string {
   return cleaned;
 }
 
-// Read credentials directly from environment variables (.env file)
-const envUrl = cleanSupabaseUrl(import.meta.env.VITE_SUPABASE_URL || '');
-const envAnonKey = cleanEnvValue(import.meta.env.VITE_SUPABASE_ANON_KEY || '');
+// Read credentials directly
+const envUrl = cleanSupabaseUrl('https://gtehxfnfmdhvapshsjyu.supabase.co');
+const envAnonKey = cleanEnvValue('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0ZWh4Zm5mbWRodmFwc2hzanl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NjMxMDEsImV4cCI6MjA5OTQzOTEwMX0.RBbjN4aKE9Q2l-WNIukHVIf0-Gy1ZDIv-8T_zhO69-M');
 
 export const supabaseUrl = envUrl;
 export const supabaseAnonKey = envAnonKey;
