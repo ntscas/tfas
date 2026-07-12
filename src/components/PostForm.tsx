@@ -120,31 +120,13 @@ export default function PostForm({ postToEdit, editPassword, currentUser, onSucc
           </div>
         )}
 
-        {!currentUser && !postToEdit && !hideAnonymousBanner && (
-          <div className="p-3.5 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3" id="anon-choice-banner">
-            <div className="flex items-center gap-2">
-              <span className="text-sm select-none">💡</span>
-              <h4 className="text-[11px] font-black text-slate-800">로그인 없이 글쓰기를 진행하시겠습니까?</h4>
-            </div>
-            <div className="flex gap-2">
-              {onLoginRedirect && (
-                <button
-                  type="button"
-                  onClick={onLoginRedirect}
-                  className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 font-extrabold text-[10px] text-white rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-sm"
-                >
-                  <LogIn className="w-2.5 h-2.5" />
-                  <span>3초 로그인</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setHideAnonymousBanner(true)}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] rounded-lg transition-all cursor-pointer"
-              >
-                익명으로 쓰기
-              </button>
-            </div>
+        {/* Anonymous usage tip banner */}
+        {!postToEdit && (
+          <div className="p-3.5 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl flex items-center gap-2" id="anon-choice-banner">
+            <span className="text-sm select-none">💡</span>
+            <h4 className="text-[11px] font-black text-slate-800">
+              Tax-Forensics는 자유로운 100% 익명 글 작성을 지원합니다. 설정한 비밀번호는 향후 수정/삭제 시 필요합니다.
+            </h4>
           </div>
         )}
 
