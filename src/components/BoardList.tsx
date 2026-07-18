@@ -97,7 +97,7 @@ export default function BoardList({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
             </span>
-            <span>독립형 Tax-Forensics 앱을 설치해 보세요!</span>
+            <span>독립형 TFAS 앱을 설치해 보세요!</span>
           </div>
           <button 
             onClick={onInstallClick}
