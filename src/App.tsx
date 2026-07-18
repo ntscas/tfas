@@ -252,7 +252,7 @@ export default function App() {
               <p className="text-[10px] text-brand-sidebar-muted font-extrabold uppercase tracking-widest pl-2 mb-3">
                 Database Status
               </p>
-              <nav className="space-y-1">
+              <nav className="space-y-1.5">
                 {isSupabaseConfigured ? (
                   <div
                     className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-300 bg-emerald-500/5 border border-emerald-500/10"
@@ -273,6 +273,36 @@ export default function App() {
                     </span>
                     <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse" />
                   </div>
+                )}
+
+                {/* App Installation Option */}
+                {isStandalone ? (
+                  <div
+                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-400 bg-slate-800/20 border border-slate-800/40"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      <span>TFAS 앱 설치 완료됨</span>
+                    </span>
+                    <span className="text-[10px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded-md font-extrabold">Active</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (deferredPrompt) {
+                        handleInstallApp();
+                      } else {
+                        setShowInstallModal(true);
+                      }
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-amber-300 bg-amber-500/5 border border-amber-500/20 hover:bg-amber-500/10 hover:text-amber-200 cursor-pointer text-left active:scale-[0.98]"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Download className="w-4 h-4 text-amber-400 animate-bounce" style={{ animationDuration: '2s' }} />
+                      <span>TFAS 앱 설치하기</span>
+                    </span>
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-md font-extrabold animate-pulse">설치</span>
+                  </button>
                 )}
               </nav>
             </div>
