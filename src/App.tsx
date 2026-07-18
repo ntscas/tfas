@@ -25,7 +25,8 @@ import {
   Menu,
   X,
   Download,
-  ShieldAlert
+  ShieldAlert,
+  ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -187,11 +188,11 @@ export default function App() {
               id="brand-logo"
             >
               <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.3)] animate-pulse">
-                <Zap className="w-5 h-5 text-emerald-400 stroke-[2.5]" />
+                <ShieldCheck className="w-5 h-5 text-emerald-400 stroke-[2.5]" />
               </div>
               <div className="flex flex-col gap-0.5">
                 <span className="text-[11px] font-bold text-emerald-400 tracking-tight leading-tight">Tax-Forensics</span>
-                <h1 className="text-base font-extrabold text-white tracking-tight leading-none">Tax-Forensics</h1>
+                <h1 className="text-base font-extrabold text-white tracking-tight leading-none">TFAS</h1>
               </div>
             </div>
 
@@ -306,7 +307,7 @@ export default function App() {
               <span>🔒 100% 안전한 익명 광장</span>
             </p>
             <p className="text-[10px] text-brand-sidebar-muted leading-relaxed font-semibold">
-              Tax-Forensics는 별도의 가입이나 로그인이 불필요합니다. 글 작성 시 입력한 비밀번호를 통해 자유롭고 안전하게 게시글을 수정 및 삭제할 수 있습니다.
+              TFAS는 별도의 가입이나 로그인이 불필요합니다. 글 작성 시 입력한 비밀번호를 통해 자유롭고 안전하게 게시글을 수정 및 삭제할 수 있습니다.
             </p>
           </div>
         </div>
@@ -325,7 +326,7 @@ export default function App() {
               >
                 <Menu className="w-5.5 h-5.5" />
               </button>
-              <span className="text-sm font-extrabold text-brand-text font-serif">Tax-Forensics</span>
+              <span className="text-sm font-extrabold text-brand-text font-serif">TFAS</span>
             </div>
           </header>
         )}
@@ -445,7 +446,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Tax-Forensics PWA Install Guidance Modal */}
+      {/* TFAS PWA Install Guidance Modal */}
       <AnimatePresence>
         {showInstallModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-xs" id="install-guide-backdrop">
@@ -467,7 +468,7 @@ export default function App() {
                 <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
                   <Download className="w-5 h-5 text-emerald-500 animate-bounce" />
                 </div>
-                <h3 className="text-base font-black text-slate-900 font-serif">Tax-Forensics 앱 설치하기</h3>
+                <h3 className="text-base font-black text-slate-900 font-serif">TFAS 앱 설치하기</h3>
                 <p className="text-[11px] text-slate-500 font-semibold leading-relaxed">
                   독립형 앱(PWA)으로 설치해 보세요! 일반 모바일 앱처럼 홈화면에서 원터치로 빠르게 접속할 수 있습니다.
                 </p>
