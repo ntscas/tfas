@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tax-talk-v7'; // Incremented key to invalidate any stale browser/service-worker caches immediately
+const CACHE_NAME = 'tfas-v1'; // Incremented key to invalidate any stale browser/service-worker caches immediately
 const ASSETS = [
   '/',
   '/index.html',
